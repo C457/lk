@@ -171,11 +171,11 @@ endif
 
 endif
 
-#ifeq ($(PLATFORM), tcc896x)
-#OBJS += $(LOCAL_DIR)/nand_drv_dummy.o
-#else
+ifneq ($(EMMC_BOOT),1)
 include ../../../hardware/telechips/nand_v8/Makefile
-#endif
+else
+OBJS += $(LOCAL_DIR)/nand_drv_dummy.o
+endif
 
 include platform/tcc_shared/tools/Makefile
 include platform/tcc_shared/tcsb/Makefile
