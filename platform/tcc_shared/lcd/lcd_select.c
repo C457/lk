@@ -30,6 +30,7 @@ This source code is provided subject to the terms of a Mutual Non-Disclosure Agr
 #include <lcd.h>
 #include <dev/gpio.h>
 #include <platform/gpio.h>
+#include <daudio_ver.h>
 
 #include <tnftl/IO_TCCXXX.h>
 
@@ -204,183 +205,235 @@ static int hdmi1280x720_set_backlight_level(struct lcd_panel *panel, int level)
 	return 0;
 }
 
-#if 0
-static struct lcd_panel fld0800_panel = {
-	.name		= "FLD0800",
-	.manufacturer	= "innolux",
+static struct lcd_panel Truly_lvds1280x720_8 = {
+	.name		= "LVDS1280x720_8_0",
+	.manufacturer	= "Truly",
 	.id		= PANEL_ID_FLD0800,
-	.xres		= 800,//1024,
-	.yres		= 480,//600,
-	.width		= 154,//153,
-	.height		= 85,//90,
-	.bpp		= 24,
-	.clk_freq	= 33260000,//51200000,
-	.clk_div	= 2,
-	.bus_width	= 24,
-	
-	.lpw		= 12,//19,
-	.lpc		= 800,//1024,
-	.lswc		= 48,//147,
-	.lewc		= 100,//147,
-	.vdb		= 0,
-	.vdf		= 0,
-
-	.fpw1		= 1,//2,
-	.flc1		= 480,//600,
-	.fswc1		= 3,//10,
-	.fewc1		= 90,//25,
-	
-	.fpw2		= 1,//2,
-	.flc2		= 480,//600,
-	.fswc2		= 3,//10,
-	.fewc2		= 90,//25,
-
-	.sync_invert	= IV_INVERT | IH_INVERT,
-	.init		= fld0800_panel_init,
-	.set_power	= fld0800_set_power,
-	.set_backlight_level = fld0800_set_backlight_level,
-};
-#else
-static struct lcd_panel fld0800_panel = {
-	.name		= "FLD0800",
-	.manufacturer	= "innolux",
-	.id		= PANEL_ID_FLD0800,
-	.xres		= 1280,//1024,
-	.yres		= 720,//600,
-	.width		= 60,//153,
-	.height		= 72,//90,
-	.bpp		= 24,
-
-	.clk_freq	= 63700000,//51200000,
-	.clk_div	= 2,
-	.bus_width	= 24,
-	
-	.lpw		= 2,//19,
-	.lpc		= 1280,//1024,
-	.lswc		= 12,//147,
-	.lewc		= 44,//147,
-
-	.vdb		= 0,
-	.vdf		= 0,
-
-	.fpw1		= 2,//2,
-	.flc1		= 720,//600,
-	.fswc1		= 1,//10,
-	.fewc1		= 67,//25,
-	
-	.fpw2		= 2,//2,
-	.flc2		= 720,//600,
-	.fswc2		= 1,//10,
-	.fewc2		= 67,//25,
-
-	.sync_invert	= IV_INVERT | IH_INVERT,
-	.init		= fld0800_panel_init,
-	.set_power	= fld0800_set_power,
-	.set_backlight_level = fld0800_set_backlight_level,
-};
-#endif
-
-#if defined(HDMI_1920_720_12_3)
-static struct lcd_panel hdmi1280x720_panel = {
-	.name		= "HDMI1280x720",
-	.manufacturer	= "Telechips",
-	.id		= PANEL_ID_HDMI,
-	.xres		= 1920,//1280,
-	.yres		= 720,
-	.width		= 177,//103,
-	.height		= 100,//62,
-	.bpp		= 32,
-#if 1
-	.clk_freq = 95000000,
-#else
-	.clk_freq	= 148500000,
-#endif
-	.clk_div	= 2,//1,
-	.bus_width	= 24,
-	.lpw		= 20,//2,
-	.lpc		= 1920,//1280,
-	.lswc		= 70,//12,
-	.lewc		= 70,//7,
-	.vdb		= 0,
-	.vdf		= 0,
-	.fpw1		= 4,//0,
-	.flc1		= 720,
-	.fswc1		= 18,//6,
-	.fewc1		= 18,//4,
-	.fpw2		= 4,//0,
-	.flc2		= 720,
-	.fswc2		= 18,//6,
-	.fewc2		= 18,//4,
-	.sync_invert	= IV_INVERT | IH_INVERT,
-	.init		= hdmi1280x720_panel_init,
-	.set_power	= hdmi1280x720_set_power,
-	.set_backlight_level = hdmi1280x720_set_backlight_level,
-};
-#else
-static struct lcd_panel hdmi1280x720_panel = {
-	.name		= "HDMI1280x720",
-	.manufacturer	= "Telechips",
-	.id		= PANEL_ID_HDMI,
 	.xres		= 1280,
 	.yres		= 720,
-	.width		= 103,
-	.height		= 62,
-	.bpp		= 32,
-	.clk_freq	= 148500000,
-	.clk_div	= 1,
+	.width		= 60,
+	.height		= 72,
+	.bpp		= 24,
+
+	.clk_freq	= 63700000,
+	.clk_div	= 2,
 	.bus_width	= 24,
+	
 	.lpw		= 2,
 	.lpc		= 1280,
 	.lswc		= 12,
-	.lewc		= 7,
+	.lewc		= 44,
+
 	.vdb		= 0,
 	.vdf		= 0,
-	.fpw1		= 0,
+
+	.fpw1		= 2,
 	.flc1		= 720,
-	.fswc1		= 6,
-	.fewc1		= 4,
-	.fpw2		= 0,
+	.fswc1		= 1,
+	.fewc1		= 67,
+	
+	.fpw2		= 2,
 	.flc2		= 720,
-	.fswc2		= 6,
+	.fswc2		= 1,
+	.fewc2		= 67,
+
+	.sync_invert	= IV_INVERT | IH_INVERT,
+	.init		= fld0800_panel_init,
+	.set_power	= fld0800_set_power,
+	.set_backlight_level = fld0800_set_backlight_level,
+};
+
+static struct lcd_panel BOE_hdmi1280x720_8 = {
+        .name           = "HDMI1280x720_8_0",
+        .manufacturer   = "BOE",
+        .id             = PANEL_ID_HDMI,
+        .xres           = 1280,
+        .yres           = 720,
+        .width          = 60,
+        .height         = 72,
+        .bpp            = 24,
+
+        .clk_freq       = 64000000,
+        .clk_div        = 2,
+        .bus_width      = 24,
+
+        .lpw            = 32,
+        .lpc            = 1280,
+        .lswc           = 80,
+        .lewc           = 48,
+
+        .vdb            = 0,
+        .vdf            = 0,
+
+        .fpw1           = 5,
+        .flc1           = 720,
+        .fswc1          = 13,
+        .fewc1          = 3,
+
+        .fpw2           = 5,
+        .flc2           = 720,
+        .fswc2          = 13,
+        .fewc2          = 3,
+
+        .sync_invert    = IV_INVERT | IH_INVERT,
+        .init           = hdmi1280x720_panel_init,
+        .set_power      = hdmi1280x720_set_power,
+        .set_backlight_level = hdmi1280x720_set_backlight_level,
+};
+
+static struct lcd_panel BOE_lvds1280x720_8 = {
+        .name           = "LVDS1280x720_8_0",
+        .manufacturer   = "BOE",
+        .id             = PANEL_ID_FLD0800,
+        .xres           = 1280,
+        .yres           = 720,
+        .width          = 176,
+        .height         = 99,
+        .bpp            = 24,
+
+        .clk_freq       = 64200000,
+        .clk_div        = 2,
+        .bus_width      = 24,
+
+        .lpw            = 31,
+        .lpc            = 1279,
+        .lswc           = 79,
+        .lewc           = 47,
+
+        .vdb            = 0,
+        .vdf            = 0,
+
+        .fpw1           = 4,
+        .flc1           = 719,
+        .fswc1          = 12,
+        .fewc1          = 4,
+
+        .fpw2           = 4,
+        .flc2           = 719,
+        .fswc2          = 12,
+        .fewc2          = 4,
+
+        .sync_invert    = IV_INVERT | IH_INVERT,
+	.init           = fld0800_panel_init,
+        .set_power      = fld0800_set_power,
+        .set_backlight_level = fld0800_set_backlight_level,
+};
+
+static struct lcd_panel LGD_hdmi1920x720_10_25 = {
+	.name		= "HDMI1920x720_10_25",
+	.manufacturer	= "LGDisplay",
+	.id		= PANEL_ID_HDMI,
+	.xres		= 1920,
+	.yres		= 720,
+	.width		= 177,
+	.height		= 100,
+	.bpp		= 32,
+	.clk_freq 	= 89600000,
+	.clk_div	= 2,
+	.bus_width	= 24,
+	.lpw		= 40,
+	.lpc		= 1920,
+	.lswc		= 44,
+	.lewc		= 44,
+	.vdb		= 0,
+	.vdf		= 0,
+	.fpw1		= 2,
+	.flc1		= 720,
+	.fswc1		= 3,
+	.fewc1		= 4,
+	.fpw2		= 2,
+	.flc2		= 720,
+	.fswc2		= 3,
 	.fewc2		= 4,
 	.sync_invert	= IV_INVERT | IH_INVERT,
 	.init		= hdmi1280x720_panel_init,
 	.set_power	= hdmi1280x720_set_power,
 	.set_backlight_level = hdmi1280x720_set_backlight_level,
 };
-#endif
+
+static struct lcd_panel LGD_hdmi1920x720_12_3 = {
+        .name           = "HDMI1920x720_12_3",
+        .manufacturer   = "LGDisplay",
+        .id             = PANEL_ID_HDMI,
+        .xres           = 1920,
+        .yres           = 720,
+        .width          = 177,
+        .height         = 100,
+        .bpp            = 32,
+        .clk_freq       = 98500000,
+        .clk_div        = 2,
+        .bus_width      = 24,
+        .lpw            = 32,
+        .lpc            = 1920,
+        .lswc           = 144,
+        .lewc           = 48,
+        .vdb            = 0,
+        .vdf            = 0,
+        .fpw1           = 5,
+        .flc1           = 720,
+        .fswc1          = 26,
+        .fewc1          = 15,
+        .fpw2           = 5,
+        .flc2           = 720,
+        .fswc2          = 26,
+        .fewc2          = 15,
+        .sync_invert    = IV_INVERT | IH_INVERT,
+        .init           = hdmi1280x720_panel_init,
+        .set_power      = hdmi1280x720_set_power,
+        .set_backlight_level = hdmi1280x720_set_backlight_level,
+};
+
 
 struct lcd_panel *tccfb_get_panel(void)
 {
 	unsigned char lcd_ver = get_daudio_lcd_ver();
 
-	switch(lcd_ver)
-	{
-		case 0:
-		case 2:
-		case 3:
-		case 4:
-		case 5:
-		case 7:
-			return &hdmi1280x720_panel;
-			break;
-		case 6:
-			return &fld0800_panel;
-			break;
-		case 10:
-			if(gpio_get(TCC_GPB(24)))//OE hdmi no monitor
-			{
-				return &hdmi1280x720_panel;
-			}
-			else//PIO lvds
-			{
-				return &fld0800_panel;
-			}
-			break;
-			
-		default:
-			dprintf(INFO,"ADC value is wrong number : %d\n",lcd_ver);
-			break;
-	}
+	if(gpio_get(TCC_GPB(24))) // OE
+		switch(lcd_ver)
+		{
+			case DAUDIOKK_LCD_OI_10_25_1920_720_INCELL_Si_LG: //0
+			case DAUDIOKK_LCD_OI_10_25_1920_720_INCELL_Si_2_LG: //1
+			case DAUDIOKK_LCD_OD_10_25_1920_720_INCELL_Si_LG: //3
+			case DAUDIOKK_LCD_OD_10_25_1920_720_INCELL_LTPS_LG: //5
+			case DAUDIOKK_LCD_OI_10_25_1920_720_INCELL_LTPS_LG: //7
+				return &LGD_hdmi1920x720_10_25;
+				break;
+
+			case DAUDIOKK_LCD_OD_12_30_1920_720_INCELL_Si_LG: //4
+                                return &LGD_hdmi1920x720_12_3;
+                                break;
+
+			case DAUDIOKK_LCD_OD_08_00_1280_720_OGS_Si_BOE: //6 HDMI SERDES
+				return &BOE_hdmi1280x720_8;
+				break;
+			case DAUDIOKK_LCD_OI_DISCONNECTED: //10
+				return &LGD_hdmi1920x720_10_25;
+				break;
+			case DAUDIOKK_LCD_OI_08_00_1280_720_OGS_Si_BOE: //8
+				return &BOE_lvds1280x720_8;
+                                break;
+			default:
+				dprintf(INFO,"ADC value is wrong number : %d\n",lcd_ver);
+				return &LGD_hdmi1920x720_10_25;
+				break;
+		}
+	else			// PIO
+		switch(lcd_ver)
+                {
+                        case DAUDIOKK_LCD_PI_10_25_1920_720_PIO_AUO: //5
+                                return &LGD_hdmi1920x720_10_25;
+                                break;
+                        case DAUDIOKK_LCD_PI_08_00_800_400_PIO_TRULY: //6
+                                return &Truly_lvds1280x720_8;
+                                break;
+                        case DAUDIOKK_LCD_OI_DISCONNECTED: //10 Temporary use DAUDIOKK_LCD_PI_08_00_800_400_PIO_TRULY
+                                return &Truly_lvds1280x720_8;
+                                break;
+                        default:
+                                dprintf(INFO,"ADC value is wrong number : %d\n",lcd_ver);
+				return &LGD_hdmi1920x720_10_25;
+                                break;
+                }
+
 }
 

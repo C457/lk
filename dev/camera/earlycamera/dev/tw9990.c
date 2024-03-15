@@ -56,7 +56,6 @@ static struct sensor_reg cvbs_composite[] = {
     {0x03, 0xA0},
     {0x04, 0x00},
     {0x05, 0x00},
-    {0x06, 0x00},
     {0x1C, 0x08},
     {0x07, 0x02},
     {0x08, 0x12},
@@ -66,11 +65,11 @@ static struct sensor_reg cvbs_composite[] = {
     {0x0C, 0xCC},
     {0x0D, 0x00},
     {0x0F, 0x00},
-    {0x10, 0x00},
-    {0x11, 0x64},
+    {0x10, 0xFB},	//2018.10.04 - Default color change, (123,95,128)
+    {0x11, 0x5F},
     {0x12, 0x21},
-    {0x13, 0x80},
-    {0x14, 0x80},
+    {0x13, 0x64},	//2018.11.22 - Default color change, (123,95,100)
+    {0x14, 0x64},
     {0x15, 0x00},
     {0x16, 0x00},
     {0x17, 0x30},
@@ -120,6 +119,7 @@ static struct sensor_reg cvbs_composite[] = {
     {0x6F, 0x13},
     {0xAE, 0x1A},
     {0xAF, 0x80},
+    {0x06, 0x80},	//2018.08.07 - sw reset before initialization, stms178011 rearcam image shift issue.
 	{0xFF, 0xFF}
 };
 
@@ -133,7 +133,6 @@ static struct sensor_reg s_video[] = {
     {0x03, 0xA0},
     {0x04, 0x00},
     {0x05, 0x00},
-    {0x06, 0x00},
     {0x07, 0x02},
     {0x08, 0x12},
     {0x09, 0xF0},
@@ -142,11 +141,11 @@ static struct sensor_reg s_video[] = {
     {0x0C, 0xCC},
     {0x0D, 0x00},
     {0x0F, 0x00},
-    {0x10, 0x00},
-    {0x11, 0x64},
+    {0x10, 0xFB},	//2018.10.04 - Default color change, (123,95,128)
+    {0x11, 0x5F},
     {0x12, 0x21},
-    {0x13, 0x80},
-    {0x14, 0x80},
+    {0x13, 0x64},	//2018.11.22 - Default color change, (123,95,100)
+    {0x14, 0x64},
     {0x15, 0x00},
     {0x16, 0x00},
     {0x17, 0x30},
@@ -154,7 +153,7 @@ static struct sensor_reg s_video[] = {
     {0x19, 0x58},
     {0x1A, 0x0A},
     {0x1B, 0x00},
-    {0x1C, 0x07},
+    {0x1C, 0x00},
     {0x1D, 0x7F},
     {0x1E, 0x08},
     {0x1F, 0x00},
@@ -197,6 +196,7 @@ static struct sensor_reg s_video[] = {
     {0x6F, 0x13},
     {0xAE, 0x1A},
     {0xAF, 0x80},
+    {0x06, 0x80},	//2018.08.07 - sw reset before initialization, stms178011 rearcam image shift issue.
 	{0xFF, 0xFF}
 };
 
@@ -333,17 +333,17 @@ int sensor_video_check(void) {
 		//log("[TW9990] initializing check/count : 0x%x/%d \n", readVal, tmp);
 
 		if ((readVal&0xEB) == 0x68) {
-			if (tmp > 0) mdelay(130);
+			if (tmp > 0) mdelay(50);
 			ret = 0;
 			break;
 		}
-		if (tmp >= 9) { // waiting for 1000ms.
-			printk("CM4(E-CAM):	fail to video signal check(%d), status(0x%02x). \n", tmp, readVal);
+		if (tmp >= 29) { // 2018.11.13 - waiting for 300ms. Same as D-Audio/GEN5 platform.
+			printk("CM4(E-CAM)(tw9990):	fail to video signal check(%d), status(0x%02x). \n", tmp, readVal);
 			ret = -1;
 			break;
 		} else {
 			log("[TW9990] initializing check/count : 0x%x/%d \n", readVal, tmp);
-			mdelay(100);
+			mdelay(10);
 			tmp++;
 		}
 	}

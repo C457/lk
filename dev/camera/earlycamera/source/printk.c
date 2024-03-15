@@ -23,19 +23,82 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
+#include <timer.h>
 
 #include "types.h"
 #include "uart.h"
 #include "printk.h"
 
+#define snprintf(buf, size, fmt, args...) sprintf(buf, fmt, ##args)
+
+static unsigned long    buffer_count    = 0;
+static unsigned int     log_mem_addr    = 0;
+static unsigned int     log_mem_size    = 1 * 1024 * 1024;
+
+unsigned int get_log_length(void)
+{
+    return buffer_count;
+}
+
+unsigned int set_log_mem_info(unsigned int addr)
+{
+    log_mem_addr = addr;
+
+    return log_mem_addr;
+}
+
 int _dvprintf(const char *fmt, va_list ap)
 {
 	char buf[256];
 	int err;
+	char ts_buf[13];
+
+	// print timestamp to uart
+	snprintf(ts_buf, sizeof(ts_buf), "[%u] ", current_time());
+	_dputs(ts_buf);
+
+	// print timestamp to pmap
+	if(strlen(ts_buf) + buffer_count < log_mem_size) {
+		if(log_mem_addr != NULL)
+			buffer_count += sprintf(log_mem_addr + buffer_count, ts_buf);
+	}
+
+	// print log to uart
+	err = vsnprintf(buf, sizeof(buf), fmt, ap);
+	_dputs(buf);
+
+	// print log to pmap
+	if(strlen(buf) + buffer_count < log_mem_size) {
+		if(log_mem_addr != NULL)
+			buffer_count += sprintf(log_mem_addr + buffer_count, buf);
+	}
+
+	return err;
+}
+
+int _dvprintfm(const char *fmt, va_list ap)
+{
+	char buf[256];
+	int err;
+	char ts_buf[13];
+
+	// print timestamp to uart
+	snprintf(ts_buf, sizeof(ts_buf), "[%u] ", current_time());
+
+	// print timestamp to pmap
+	if(strlen(ts_buf) + buffer_count < log_mem_size) {
+		if(log_mem_addr != NULL)
+			buffer_count += sprintf(log_mem_addr + buffer_count, ts_buf);
+	}
 
 	err = vsnprintf(buf, sizeof(buf), fmt, ap);
 
-	_dputs(buf);
+	if(strlen(buf) + buffer_count < log_mem_size) {
+		if(log_mem_addr != NULL)
+			buffer_count += sprintf(log_mem_addr + buffer_count, buf);
+		else
+			err = -1;
+	}
 
 	return err;
 }
@@ -46,8 +109,33 @@ int printk(const char *fmt, ...)
 
 	va_list ap;
 	va_start(ap, fmt);
-	err = _dvprintf(fmt, ap);
+	//err = _dvprintf(fmt, ap);
+	err = _dvprintfm(fmt, ap);
 	va_end(ap);
+
+	return err;
+}
+
+int printm(const char *fmt, ...)
+{
+	int err;
+
+	va_list ap;
+	va_start(ap, fmt);
+	err = _dvprintfm(fmt, ap);
+	va_end(ap);
+
+	return err;
+}
+
+int sprintf(char *str, const char *fmt, ...)
+{
+    int err;
+
+    va_list ap;
+    va_start(ap, fmt);
+    err = vsprintf(str, fmt, ap);
+    va_end(ap);
 
 	return err;
 }

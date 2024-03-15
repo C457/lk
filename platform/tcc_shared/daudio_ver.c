@@ -66,15 +66,15 @@ static ADC_Range_t bt_ranges[] = {
 static ADC_Range_t lcd_ranges[11];
 
 static ADC_Range_t lcd_versions_oe_int[11] = {
-	{DAUDIOKK_LCD_OI_10_25_1920_720_INCELL_Si, 0, 0},
-	{DAUDIOKK_LCD_OI_10_25_1920_720_OGS_TEMP, 100, 270},
+	{DAUDIOKK_LCD_OI_10_25_1920_720_INCELL_Si_LG, 0, 0},
+	{DAUDIOKK_LCD_OI_10_25_1920_720_INCELL_Si_2_LG, 100, 270},
 	{DAUDIOKK_LCD_OI_RESERVED1, 280, 470},
 	{DAUDIOKK_LCD_OI_RESERVED2, 480, 630},
 	{DAUDIOKK_LCD_OI_RESERVED3, 640, 810},
 	{DAUDIOKK_LCD_OI_RESERVED4, 820, 980},
 	{DAUDIOKK_LCD_OI_RESERVED5, 990, 1140},
-	{DAUDIOKK_LCD_OI_10_25_1920_720_INCELL_LTPS, 1150, 1340},
-	{DAUDIOKK_LCD_OI_08_00_1280_720_OGS_Si, 1350, 1520},
+	{DAUDIOKK_LCD_OI_10_25_1920_720_INCELL_LTPS_LG, 1150, 1340},
+	{DAUDIOKK_LCD_OI_08_00_1280_720_OGS_Si_BOE, 1350, 1520},
 	{DAUDIOKK_LCD_OI_RESERVED6, 1530, 1710},
 	{DAUDIOKK_LCD_OI_DISCONNECTED, 1710, 1890},
 };
@@ -98,10 +98,10 @@ static ADC_Range_t lcd_versions_oe_de[11] = {
 	{DAUDIOKK_LCD_OD_RESERVED1, 0, 0},
 	{DAUDIOKK_LCD_OD_RESERVED2, 100, 270},
 	{DAUDIOKK_LCD_OD_RESERVED3, 280, 470},
-	{DAUDIOKK_LCD_OD_10_25_1920_720_INCELL_Si, 480, 630},
-	{DAUDIOKK_LCD_OD_12_30_1920_720_INCELL_Si, 640, 810},
-	{DAUDIOKK_LCD_OD_10_25_1920_720_INCELL_LTPS, 820, 980},
-	{DAUDIOKK_LCD_OD_08_00_1280_720_OGS_Si, 990, 1140},
+	{DAUDIOKK_LCD_OD_10_25_1920_720_INCELL_Si_LG, 480, 630},
+	{DAUDIOKK_LCD_OD_12_30_1920_720_INCELL_Si_LG, 640, 810},
+	{DAUDIOKK_LCD_OD_10_25_1920_720_INCELL_LTPS_LG, 820, 980},
+	{DAUDIOKK_LCD_OD_08_00_1280_720_OGS_Si_BOE, 990, 1140},
 	{DAUDIOKK_LCD_OD_RESERVED4, 1150, 1340},
 	{DAUDIOKK_LCD_OD_RESERVED5, 1350, 1520},
 	{DAUDIOKK_LCD_OD_RESERVED6, 1530, 1710},
@@ -254,7 +254,7 @@ static unsigned char parse_ver(unsigned long adc, int what)
 	int i;
 	ADC_Range_t *temp_range = get_range(what);
 	int size = sizeof_adc_range_t(what);
-	unsigned char default_ver[DAUDIO_VER_MAX] = {DAUDIOKK_LCD_OI_10_25_1920_720_INCELL_Si, DAUDIOKK_PLATFORM_WS4, DAUDIOKK_HW_1ST, DAUDIOKK_BT_VER_1};
+	unsigned char default_ver[DAUDIO_VER_MAX] = {DAUDIOKK_LCD_OI_10_25_1920_720_INCELL_Si_LG, DAUDIOKK_PLATFORM_WS4, DAUDIOKK_HW_1ST, DAUDIOKK_BT_VER_1};
 	unsigned char ret = default_ver[what];		//default board
 	unsigned long min, max;
 
@@ -365,3 +365,45 @@ unsigned long get_daudiokk_adc_ain09(void)
 }
 
 
+#ifdef MOBIS_GET_DATA_FROM_MICOM
+int set_signal_to_micom(unsigned on)
+{
+	gpio_set(TCC_GPB(11), on);
+	return 0;
+}
+#endif
+
+int factory_connect_for_lcd(void)
+{
+	if((!gpio_get(GPIO_PORTB | 8))&&get_daudio_lcd_ver()==DAUDIOKK_LCD_OD_10_25_1920_720_INCELL_LTPS_LG)
+		return 1;
+	else
+		return 0;
+
+	return 0;
+}
+
+int daudio_lcd_type_lvds_check(void)
+{
+	int lvds = 0; //LVDS : 1 , HDMI : 0
+	int mon, oem, lcd_ver;
+
+	oem = gpio_get(GPIO_PORTB | 24);
+	mon = gpio_get(GPIO_PORTB | 13);
+	lcd_ver = get_daudio_lcd_ver();
+
+	if((oem == 1) && (mon == 1))
+	{
+		if(lcd_ver == DAUDIOKK_LCD_OI_08_00_1280_720_OGS_Si_BOE)
+			lvds = 1;
+	}
+	else if((oem == 0) && (mon == 1))
+	{
+		if(lcd_ver == DAUDIOKK_LCD_PI_08_00_800_400_PIO_TRULY)
+			lvds = 1;
+		else if(lcd_ver == DAUDIOKK_LCD_PI_DISCONNECTED)
+			lvds = 1;
+	}
+
+	return lvds;
+}

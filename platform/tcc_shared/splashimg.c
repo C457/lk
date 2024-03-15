@@ -5,36 +5,20 @@
 #include <lib/ptable.h>
 #include <dev/fbcon.h>
 #include <splash/splashimg.h>
-
 #include <tcc_lcd.h>
-
-#ifdef BOOTSD_INCLUDE
-#include <fwdn/Disk.h>
-#include <sdmmc/sd_memory.h>
-#include <sdmmc/emmc.h>
-#endif
-
 #include <partition_parser.h>
 #include <sfl.h>
-#include <bitmap.h>
+#include <platform/reg_physical.h>
 
-static char *splash_image_names[] =
-{
-	"bootlogo",		//BOOT_LOGO
-	"pg001",		//PARKING_GUIDE_LOGO
-	"quickboot",	//MAKE_QUICKBOOT_LOGO
-	"bluelink",		//BLUELINK BOOT LOGO
-	"reserved",		//RESERVED
-	"error",
-};
+#define PAGE_MASK(page_size)    ((page_size) - 1)
+#define ROUND_TO_PAGE(x,y)      (((x) + (PAGE_MASK(y))) & (~(PAGE_MASK(y))))
 
-#define ROUND_TO_PAGE(x,y) (((x) + (y)) & (~(y)))
-#define BYTE_TO_SECTOR(x) (x)/512
+#define PAGE_SIZE               512
+#define SPLASH_HDR_SIZE         ROUND_TO_PAGE(sizeof(SPLASH_IMAGE_Header_info_t), PAGE_SIZE)
 
-extern unsigned int flash_read_tnftl_v8(unsigned long long data_addr , unsigned data_len , void* in);
-extern int display_splash_logo(struct fbcon_config *fb_con);
+unsigned char *splash[SPLASH_HDR_SIZE];
 
-unsigned char *splash[16384];
+#include <TCC_JPU_C6.h>
 
 int jpu_c6_decoder( jpu_dec_inits_t* init_jpu, jpu_dec_outputs_t* out_jpu)
 {
@@ -137,7 +121,9 @@ ERR_DEC_OPEN:
        return ret;
 }
 
-int splash_image_decode_jpeg(unsigned int input_stream_size_, jpu_dec_outputs_t * jpu_out) {
+int splash_image_decode_jpeg(unsigned int input_stream_size_,
+		jpu_dec_outputs_t * jpu_out,
+		unsigned int decode_addr) {
 
        int ret = 0;
 
@@ -145,8 +131,8 @@ int splash_image_decode_jpeg(unsigned int input_stream_size_, jpu_dec_outputs_t 
 //     jpu_dec_outputs_t jpu_out = {0,};
        unsigned int register_base_physical_address = 0x75180000;
        unsigned int register_base_virtual_address = 0x75180000;
-       unsigned int memory_base_physical_address = JPEG_DECODE_ADDR;// 0x8cc00000;
-       unsigned int memory_base_virtual_address = JPEG_DECODE_ADDR;// 0x8cc00000;
+       unsigned int memory_base_physical_address = decode_addr;// 0x8cc00000;
+       unsigned int memory_base_virtual_address = decode_addr;// 0x8cc00000;
        int input_stream_size = (int)input_stream_size_;        // decoding CO jpeg stream size
 
 //     dprintf(INFO, "==== %s() in \n", __func__);
@@ -161,10 +147,8 @@ int splash_image_decode_jpeg(unsigned int input_stream_size_, jpu_dec_outputs_t 
        jpu_init.m_Memcpy = memcpy;                             // (void* (*) ( void*, const void*, unsigned int ))sys_memcpy;
        jpu_init.m_Interrupt = NULL;                    // (int  (*) ( void ))sys_test;
 
-#if 0
-       dprintf(INFO, "==== %s()\n==== input_stream_size(%d) \n==== register_base_virtual_address(0x%x) \n==== memory_base_physical_address(0x%x) \n", \
-                       __func__, \
-                       jpu_init.input_stream_size, \
+#if 1
+	dprintf(INFO, "==== register_base_virtual_address(0x%x) \n==== memory_base_physical_address(0x%x) \n", \
                        jpu_init.register_base_virtual_address, \
                        jpu_init.memory_base_physical_address);
 #endif
@@ -173,9 +157,8 @@ int splash_image_decode_jpeg(unsigned int input_stream_size_, jpu_dec_outputs_t 
        if ( ret != 0 )
                dprintf(INFO, "jpu error : %d\n", ret);
 
-#if 0
-       dprintf(INFO, "==== %s() out \n==== width x height(%dx%d), YUV format(%d), m_pCurrOut(0x%x) \n", \
-                               __func__, \
+#if 1
+	dprintf(INFO, "==== width x height(%dx%d), YUV format(%d), m_pCurrOut(0x%x) \n", \
                                jpu_out->m_iWidth, jpu_out->m_iHeight, \
                                jpu_out->m_iYUVFormat, \
                                jpu_out->m_pCurrOut[0][0]);
@@ -184,12 +167,13 @@ int splash_image_decode_jpeg(unsigned int input_stream_size_, jpu_dec_outputs_t 
 
 }
 
-static int get_splash_index(SPLASH_IMAGE_Header_info_t *splash_hdr, char *part)
-{
-	int idx;
+static int get_splash_index(SPLASH_IMAGE_Header_info_t *splash_hdr, char *part){
+	unsigned int idx = 0;
 
 	for (idx = 0; idx < splash_hdr->ulNumber; idx++) {
+
 		dprintf(SPEW, "part name : %s idx : %d\n", splash_hdr->SPLASH_IMAGE[idx].ucImageName, idx);
+
 		if (!strcmp((splash_hdr->SPLASH_IMAGE[idx].ucImageName), part)) {
 			return idx;
 		}
@@ -198,221 +182,19 @@ static int get_splash_index(SPLASH_IMAGE_Header_info_t *splash_hdr, char *part)
 	return -1;
 }
 
-static int splash_image_nand_v8(char *partition){
-
-	SPLASH_IMAGE_Header_info_t *splash_hdr = (void*)splash;
-	struct fbcon_config *fb_display = NULL;
-	int img_idx = 0;
-	unsigned int page_size = flash_page_size();
-	//unsigned int page_mask = page_size -1;
-
-	unsigned long long ptn = 0;
-
-    memset(splash_hdr, 0x00, sizeof(SPLASH_IMAGE_Header_info_t));
-
-	dprintf(SPEW, "partition : %s\n", partition);
-
-
-	ptn = flash_ptn_offset("splash");
-	if(ptn == 0){
-		dprintf(CRITICAL, "ERROR : No splash partition found !\n");
-		return -1;
-	}else{
-
-		fb_display = fbcon_display();
-
-		if(fb_display){
-
-			if(!flash_read_tnftl_v8(ptn, page_size, splash_hdr)){
-				if(strcmp(splash_hdr->ucPartition, SPLASH_TAG)){
-					dprintf(CRITICAL, "Splash TAG Is Mismatched\n");
-					return -1;
-				}
-
-			}
-
-			img_idx = get_splash_index(splash_hdr, partition);
-			dprintf(SPEW, "image idx = %d \n" ,img_idx);
-
-
-			if(img_idx < 0){
-				dprintf(CRITICAL, " there is no image [%s]\n", partition);
-				return -1;
-			}else{
-
-				if((fb_display->width != splash_hdr->SPLASH_IMAGE[img_idx].ulImageWidth) 
-						&& (fb_display->height != splash_hdr->SPLASH_IMAGE[img_idx].ulImageHeight)){
-
-					fb_display->width = splash_hdr->SPLASH_IMAGE[img_idx].ulImageWidth;
-					fb_display->height = splash_hdr->SPLASH_IMAGE[img_idx].ulImageHeight;
-					display_splash_logo(fb_display);
-				}
-
-				if(flash_read_tnftl_v8(ptn+BYTE_TO_SECTOR(splash_hdr->SPLASH_IMAGE[img_idx].ulImageAddr),
-							splash_hdr->SPLASH_IMAGE[img_idx].ulImageSize, fb_display->base)){
-					fbcon_clear();
-				}
-			}
-		}
-	}
-
-	return 0;
-
-}
-
-#if defined(BOOTSD_INCLUDE)
-static int splash_image_sdmmc(char *partition){
-
-	SPLASH_IMAGE_Header_info_t *splash_hdr = (void*)splash;
-	struct fbcon_config *fb_display = NULL;
-	int img_idx = 0;
-	unsigned int page_size = flash_page_size();
-	//unsigned int page_mask = page_size -1;
-
-	unsigned long long ptn = 0;
-
-	dprintf(SPEW, "partition : %s\n", partition);
-
-	ptn = emmc_ptn_offset("splash");
-	if(ptn == 0){
-		dprintf(CRITICAL, "ERROR : No splash partition found !\n");
-		return -1;
-	}else{
-
-		fb_display = fbcon_display();
-
-		if(fb_display){
-
-			if(!emmc_read(ptn, page_size, splash_hdr)){
-				if(strcmp(splash_hdr->ucPartition, SPLASH_TAG)){
-					dprintf(CRITICAL, "Splash TAG Is Mismatched\n");
-					return -1;
-				}
-			}
-			img_idx = get_splash_index(splash_hdr, partition);
-			dprintf(SPEW, "image idx = %d \n" ,img_idx);
-
-
-			if(img_idx < 0){
-				dprintf(CRITICAL, " there is no image [%s]\n", partition);
-			}else{
-
-				if((fb_display->width != splash_hdr->SPLASH_IMAGE[img_idx].ulImageWidth) 
-						&& (fb_display->height != splash_hdr->SPLASH_IMAGE[img_idx].ulImageHeight)){
-
-					fb_display->width = splash_hdr->SPLASH_IMAGE[img_idx].ulImageWidth;
-					fb_display->height = splash_hdr->SPLASH_IMAGE[img_idx].ulImageHeight;
-					display_splash_logo(fb_display);
-				}
-
-				if(emmc_read(ptn + BYTE_TO_SECTOR(splash_hdr->SPLASH_IMAGE[img_idx].ulImageAddr),
-							splash_hdr->SPLASH_IMAGE[img_idx].ulImageSize, fb_display->base)){
-
-					fbcon_clear();
-				}
-			}
-		}
-	}
-
-	return 0;
-
-}
-
-int splash_image_load_sdmmc(char *partition, struct fbcon_config *fb_cfg)
-{
-
-	SPLASH_IMAGE_Header_info_t *splash_hdr = (void*)splash;
-	struct fbcon_config *fb_display = NULL;
-	int img_idx = 0;
-	unsigned int page_size = flash_page_size();
-	unsigned int page_mask = page_size -1;
-
-	unsigned long long ptn = 0;
-	unsigned int ptn_index;
-
-	dprintf(INFO, "partition : %s\n", partition);
-
-	ptn_index = partition_get_index(partition);
-	ptn = partition_get_offset(ptn_index);
-
-	if(ptn == 0){
-		dprintf(CRITICAL, "ERROR : No splash partition found !\n");
-		return -1;
-	}else{
-
-		if(tcc_read(ptn, page_size, splash_hdr)){
-			if(strcmp(splash_hdr->ucPartition, SPLASH_TAG)){
-				dprintf(CRITICAL, "Splash TAG Is Mismatched\n");
-				return -1;
-			}
-		}
-
-		img_idx = get_splash_index(splash_hdr, partition);
-		dprintf(SPEW, "image idx = %d \n" ,img_idx);
-
-		if(img_idx < 0){
-			dprintf(CRITICAL, " there is no image from emmc [%s]\n", partition);
-		}else{
-
-			fb_cfg->width = splash_hdr->SPLASH_IMAGE[img_idx].ulImageWidth;
-			fb_cfg->height = splash_hdr->SPLASH_IMAGE[img_idx].ulImageHeight;
-			//fb_display->bpp = splash_hdr->SPLASH_IMAGE[img_idx].fmt
-
-			tcc_read(ptn + BYTE_TO_SECTOR(splash_hdr->SPLASH_IMAGE[img_idx].ulImageAddr),
-					splash_hdr->SPLASH_IMAGE[img_idx].ulImageSize, fb_cfg->base);    			    			
-		}
-
-	}
-
-	return 0;
-
-}
-#endif
-
-#if !defined(TCC_SUPPORT_SPLASH_JPEG)
-//for convert D-audio custom splash (bitmap images...)
-static int get_splash_image_type(char *name)
-{
-	int i, size = sizeof(splash_image_names) / sizeof(int);
-
-	for (i = 0; i < size; i++)
-	{
-		if (strcmp(name, splash_image_names[i]) == 0)
-			break;	//success to find image type
-	}
-
-	return i;
-}
-
-int splash_image_load(char *partition, struct fbcon_config *fb_cfg)
-{
-	int type = get_splash_image_type(partition);
-
-	dprintf(INFO, "%s image type[%d] %s \n", __func__, type, splash_image_names[type]);
-
-	if (type != IMAGE_TYPE_MAX)
-		return bitmap_to_fb(type, fb_cfg);
-	else return -1;
-}
-#else // TCC Original
 int splash_image_load(char *partition, struct fbcon_config *fb_cfg) {
-	SPLASH_IMAGE_Header_info_t *splash_hdr = (void*)splash;
-	//struct fbcon_config *fb_display = NULL;
+        SPLASH_IMAGE_Header_info_t * splash_hdr = splash;
 	int img_idx = 0;
-	int ret_val = 0;
-
-	unsigned int page_size = flash_page_size();
-	//unsigned int page_mask = page_size -1;
-
 	unsigned long long ptn = 0;
 	unsigned int ptn_index;
 	unsigned int img_fmt = 0;       // 0 = BMP, 1 = JPEG
-
 	const char* ptn_name = "splash";
-
-	void * temp_addr;
+        int ret = 0;
 
 	jpu_dec_outputs_t jpu_out = {0,};
+
+	unsigned int decode_addr = JPEG_DECODE_ADDR
+		+ ((fb_cfg->width * fb_cfg->height) * (fb_cfg->bpp/8));
 
 	//dprintf(INFO, "==== %s in\n", __func__);
 
@@ -421,41 +203,42 @@ int splash_image_load(char *partition, struct fbcon_config *fb_cfg) {
 
 	if(ptn == 0) {
 		dprintf(CRITICAL, "ERROR : No splash partition found !\n");
-		return -1;
+                ret = -1;
+                goto err;
 	}
 	else{
-		if(tcc_read(ptn, splash_hdr, page_size)) {
+                if(tcc_read(ptn, splash_hdr, SPLASH_HDR_SIZE)) {
 			dprintf(CRITICAL, "Splash TAG Is Mismatched\n");
-			return -1;
+                        ret = -1;
+                        goto err;
 		}
 
 		if(splash_hdr->ulNumber < 0) {
 		        dprintf(CRITICAL, " there is no data in splash partition \n");
-		        return -1;
+                        ret = -1;
+                        goto err;
 		}
 
 		img_idx = get_splash_index(splash_hdr, partition);
 		dprintf(SPEW, "image idx = %d \n" ,img_idx);
 
-
 		if(img_idx < 0) {
 			dprintf(CRITICAL, " there is no image from [%s]\n", partition);
 		}
 		else{
-
 			fb_cfg->width = splash_hdr->SPLASH_IMAGE[img_idx].ulImageWidth;
 			fb_cfg->height = splash_hdr->SPLASH_IMAGE[img_idx].ulImageHeight;
 			fb_cfg->stride = fb_cfg->width;
 
 			if(!strcmp((const char *)splash_hdr->SPLASH_IMAGE[img_idx].ucFmt, "JPEG")) {
-			        dprintf(INFO, "Splash image format is JPEG \n");
+//			        dprintf(INFO, "Splash image format is JPEG \n");
 			        img_fmt = 1;
 
 			        tcc_read(ptn+(splash_hdr->SPLASH_IMAGE[img_idx].ulImageAddr), \
-			                                JPEG_DECODE_ADDR, splash_hdr->SPLASH_IMAGE[img_idx].ulImageSize );
+			                                decode_addr, splash_hdr->SPLASH_IMAGE[img_idx].ulImageSize );
 			}
 			else {
-			        dprintf(INFO, "Splash image format is BMP \n");
+//			        dprintf(INFO, "Splash image format is BMP \n");
 			        img_fmt = 0;
 
 			        tcc_read(ptn+(splash_hdr->SPLASH_IMAGE[img_idx].ulImageAddr), \
@@ -463,9 +246,12 @@ int splash_image_load(char *partition, struct fbcon_config *fb_cfg) {
 			}
 
 			if(img_fmt == 1) {
-			        ret_val = splash_image_decode_jpeg(splash_hdr->SPLASH_IMAGE[img_idx].ulImageSize, &jpu_out);
-			        if(ret_val != 0)
-			                return -1;
+			        ret = splash_image_decode_jpeg(splash_hdr->SPLASH_IMAGE[img_idx].ulImageSize,
+						&jpu_out, decode_addr);
+                    if(ret != 0) {
+                            ret = -1;
+                            goto err;
+                    }
 
 			        splash_image_convert_format(&jpu_out, fb_cfg);
 			}
@@ -473,76 +259,8 @@ int splash_image_load(char *partition, struct fbcon_config *fb_cfg) {
 	}
 
 	//dprintf(INFO, "==== %s out\n", __func__);
-	return 0;
 
-}
-#endif
-
-int get_splash_image_early_camera_V2(char *image_name, unsigned int parking_guide, unsigned int *width, unsigned int *height)
-{
-	unsigned int partition_index;
-	unsigned long long partition = 0;
-	SPLASH_IMAGE_Header_info_t *splash_header = (void *)splash;
-#if _NAND_BOOT
-	unsigned int page_size = flash_page_size();
-#else
-	unsigned int page_size = 512;
-#endif
-	int image_index = 0;
-	int rel = 0;
-
-	const char* partition_name = "splash";
-
-	partition_index = partition_get_index(partition_name);
-	partition = partition_get_offset(partition_index);
-
-	if (partition == 0) {
-		dprintf(CRITICAL, "ERROR:  No splash partition found. \n");
-	}
-	else {
-		if (tcc_read(partition, splash_header, page_size)) {
-			dprintf(CRITICAL, "ERROR:  Splash tag is mismatched. \n");
-		}
-		else rel =1;
-
-		if(splash_header->ulNumber < 0 || splash_header->ulNumber > 255) {
-			dprintf(CRITICAL, "ERROR:  There is no data in splash partition. \n");
-			rel = 0;
-		}
-		else {
-			image_index = get_splash_index(splash_header, image_name);
-			dprintf(SPEW, "Early-Camera image index = %d. \n", image_index);
-			rel = 1;
-		}
-		if(rel) {
-			if (image_index < 0) {
-				dprintf(CRITICAL, "ERROR:  There is no image from [%s]. \n", image_name);
-				rel = 0;
-			}
-			else {
-				if(width)
-					*width = splash_header->SPLASH_IMAGE[image_index].ulImageWidth;
-				if(height)
-					*height = splash_header->SPLASH_IMAGE[image_index].ulImageHeight;
-				tcc_read((partition + splash_header->SPLASH_IMAGE[image_index].ulImageAddr), \
-						(void *)parking_guide, splash_header->SPLASH_IMAGE[image_index].ulImageSize);
-				dprintf(INFO, "=============OK:  get_splash_image_early_camera_V2 ==================== \n");
-			}
-		}
-	}
-	return rel;
+err:
+        return ret;
 }
 
-int splash_image(char *partition)
-{
-#if defined(BOOTSD_INCLUDE)
-	return splash_image_sdmmc(partition);
-#elif defined(TNFTL_V8_INCLUDE)
-	return splash_image_nand_v8(partition);
-#else
-	//return splash_image_nand_v7(partition);
-#endif
-
-	dprintf(CRITICAL, "Not defined storage device\n");
-	return -1;
-}

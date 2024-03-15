@@ -365,6 +365,56 @@ dprintf(INFO, "pinctrl-0 ISDBT_TEST gpio phandle = %d\r\n", fdt_get_phandle(fdt,
                 dprintf(INFO, "pinctrl-0 ISDBT_gpio phandle offset=%d\r\n", fdt_node_offset_by_phandle(fdt, fdt32_to_cpu(property1_val[0])));
                 dprintf(INFO, "pinctrl-0 ISDBT_gpio phandle = %d\r\n", fdt_get_phandle(fdt, fdt_node_offset_by_phandle(fdt, fdt32_to_cpu(property1_val[0]))));
 #endif
+
+/*SXM*/
+#if defined(INCLUDE_XM)
+		rootnode = fdt_path_offset(fdt, "/serial@763b0000");
+		property_len = 1;
+		if(rootnode < 0) {
+			dprintf(CRITICAL,"error fdt_path_offset_SXM_UART\n");
+			return ret;
+		}
+
+                //SXM_PINCTRL-0
+                ret = pinctrl_get_fdt_multi_property(fdt, rootnode, "pinctrl-0", property1_val, &property_len);
+                if(ret < 0){
+                        printf(CRITICAL,"error_fdt_get_property_pinctrl-0(SXM)\r\n");
+                        return ret;
+               }
+/*
+dprintf(INFO, "pinctrl-0-SXM gpio init[%d]\n",property1_val[0]);
+dprintf(INFO, "pinctrl-0-SXM gpio val=%d\r\n", fdt32_to_cpu(property1_val[0]));
+dprintf(INFO, "pinctrl-0-SXM gpio phandle offset=%d\r\n", fdt_node_offset_by_phandle(fdt, fdt32_to_cpu(property1_val[0])));
+dprintf(INFO, "pinctrl-0-SXM gpio phandle = %d\r\n", fdt_get_phandle(fdt, fdt_node_offset_by_phandle(fdt, fdt32_to_cpu(property1_val[0]))));
+*/
+
+               ret = pinctrl_get_fdt_multi_property(fdt, rootnode, "pinctrl-1", property1_val, &property_len);
+                if(ret < 0){
+                        printf(CRITICAL,"error_fdt_get_property_pinctrl-1(ISDBT)\r\n");
+                        return ret;
+                }
+/*
+dprintf(INFO, "pinctrl-1 SXM gpio init[%d]\n",property1_val[0]);
+dprintf(INFO, "pinctrl-1 SXM gpio val=%d\r\n", fdt32_to_cpu(property1_val[0]));
+dprintf(INFO, "pinctrl-1 SXM gpio phandle offset=%d\r\n", fdt_node_offset_by_phandle(fdt, fdt32_to_cpu(property1_val[0])));
+dprintf(INFO, "pinctrl-1 ISDBT_TEST gpio phandle = %d\r\n", fdt_get_phandle(fdt, fdt_node_offset_by_phandle(fdt, fdt32_to_cpu(property1_val[0]))));
+*/
+
+	       ret = fdt_setprop(fdt, rootnode, "pinctrl-0", property1_val, sizeof(int)*property_len);
+              if(ret < 0){
+                         printf(CRITICAL,"error_fdt_set_property_pinctrl-0(SXM)\r\n");
+                         return ret;
+                 }
+
+                ret = pinctrl_get_fdt_multi_property(fdt, rootnode, "pinctrl-0", property1_val, &property_len);
+                if(ret < 0){
+                        printf(CRITICAL,"error_fdt_get_property_pinctrl-0(SXM)\r\n");
+                        return ret;
+                }
+                dprintf(INFO, "pinctrl-0 SXM_gpio val=%d\r\n", fdt32_to_cpu(property1_val[0]));
+                dprintf(INFO, "pinctrl-0 SXM_gpio phandle offset=%d\r\n", fdt_node_offset_by_phandle(fdt, fdt32_to_cpu(property1_val[0])));
+                dprintf(INFO, "pinctrl-0 SXM_gpio phandle = %d\r\n", fdt_get_phandle(fdt, fdt_node_offset_by_phandle(fdt, fdt32_to_cpu(property1_val[0]))));
+#endif
 /*
 	// Check Platfrom version & Change pin mux
 	if((get_daudio_main_ver() == 2) || (get_daudio_main_ver()>=4)) //5th board

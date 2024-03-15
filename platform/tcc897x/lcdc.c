@@ -52,6 +52,9 @@
 
 #include <TCC_JPU_C6.h>
 
+#include <daudio_ver.h>
+
+
 #define _LCD_32BPP_           //LCD output format setting
 #define LCDC_FB_BPP		32
 
@@ -68,12 +71,12 @@
 #include <lcd/logo_24bit.h>
 #include <lcd/low.h>
 
-#if defined(HDMI_1920_720_12_3)
+#if 0//defined(HDMI_1920_720_12_3)
 #define LCDC_FB_WIDTH	1920
 #define LCDC_FB_HEIGHT	720
 #else
-#define LCDC_FB_WIDTH	800
-#define LCDC_FB_HEIGHT	480
+#define LCDC_FB_WIDTH	1280
+#define LCDC_FB_HEIGHT	720
 #endif
 
 #if defined(TARGET_TCC897X_LCN)
@@ -178,8 +181,8 @@ static void display_bootlogo_HDMI(struct fbcon_config *fb_cfg)
 
 	VARIANT_CODE_INFO_t variant_code_info;
 
-	snapshot_header = snapshot_boot_header();
-	dprintf(INFO , "snapshot_boot_header %d \n", snapshot_header);
+//	snapshot_header = snapshot_boot_header();
+//	dprintf(INFO , "snapshot_boot_header %d \n", snapshot_header);
 
 	ret = read_variant_setting(&variant_code_info);
 	if (ret == 0) {
@@ -311,17 +314,65 @@ static void lcdc_io_init_hdmi(unsigned char lcdc_num)
 	struct fbcon_config *fb_con, *fb_con_splash;
 	struct lcd_panel *panel_info;
 
+	unsigned char lcd_ver = get_daudio_lcd_ver();
+	int hdmi_video_mode_type;
+
+
+	if(gpio_get(TCC_GPB(24))) // OE
+                switch(lcd_ver)
+                {
+                        case DAUDIOKK_LCD_OI_10_25_1920_720_INCELL_Si_LG : //0
+			case DAUDIOKK_LCD_OI_10_25_1920_720_INCELL_Si_2_LG : //1
+                        case DAUDIOKK_LCD_OD_10_25_1920_720_INCELL_Si_LG: //3
+			case DAUDIOKK_LCD_OI_DISCONNECTED: //10
+				hdmi_video_mode_type = 16;
+                                break;
+			case DAUDIOKK_LCD_OI_10_25_1920_720_INCELL_LTPS_LG : //7
+				hdmi_video_mode_type = 19;
+				break;
+                        case DAUDIOKK_LCD_OD_12_30_1920_720_INCELL_Si_LG: //4
+				hdmi_video_mode_type = 17;
+                                break;
+                        case DAUDIOKK_LCD_OD_08_00_1280_720_OGS_Si_BOE: //6 HDMI SERDES
+				hdmi_video_mode_type = 18;
+                                break;
+			case DAUDIOKK_LCD_OI_08_00_1280_720_OGS_Si_BOE: //8
+				break;
+			case DAUDIOKK_LCD_OD_10_25_1920_720_INCELL_LTPS_LG: //5
+				hdmi_video_mode_type = 19;
+				break;
+                        default:
+				hdmi_video_mode_type = 16;
+                                dprintf(INFO,"ADC value is wrong\n");
+                                break;
+                }
+        else                    // PIO
+                switch(lcd_ver)
+                {
+                        case DAUDIOKK_LCD_PI_10_25_1920_720_PIO_AUO: //5
+			case DAUDIOKK_LCD_PI_08_00_800_400_PIO_TRULY: //6
+                        case DAUDIOKK_LCD_PI_DISCONNECTED: //10
+				hdmi_video_mode_type = 16;
+                                break;
+                        default:
+				hdmi_video_mode_type = 16;
+                                dprintf(INFO,"ADC value is wrong\n");
+                                break;
+                }
+
+
+
 	const struct HDMIVideoParameter video = {
 #if (HDMI_MODE_TYPE == 1)
 		/*	video.mode 				=*/	HDMI,
 #else
 		/*	video.mode 				=*/	DVI,
 #endif
-		/*	video.resolution 		=*/	gRefHdmiVideoModeList[HDMI_VIDEO_MODE_TYPE].vfmt_val,
+		/*	video.resolution 		=*/	gRefHdmiVideoModeList[hdmi_video_mode_type].vfmt_val,
 		/*	video.colorSpace		=*/	HDMI_CS_RGB,
 		/*	video.colorDepth		=*/	HDMI_CD_24,
 		/*	video.colorimetry		=*/	HDMI_COLORIMETRY_NO_DATA,
-		/*	video.pixelAspectRatio	=*/	gRefHdmiVideoModeList[HDMI_VIDEO_MODE_TYPE].ratio,
+		/*	video.pixelAspectRatio	=*/	gRefHdmiVideoModeList[hdmi_video_mode_type].ratio,
 #if defined(TCC_HDMI_DRIVER_V1_4)
 		/*  video.videoSrc          =*/ HDMI_SOURCE_EXTERNAL,
 		/*  video.Video Structure   =*/ HDMI_2D_VIDEO_FORMAT
@@ -341,11 +392,11 @@ static void lcdc_io_init_hdmi(unsigned char lcdc_num)
 		/*	audio.i2sParam.clk		=*/	I2S_64FS
 	};
 
-	dprintf(INFO, " LCDC NUM:%d   vfmt %d  , ratio:%d \n",  lcdc_num, gRefHdmiVideoModeList[HDMI_VIDEO_MODE_TYPE].vfmt_val, gRefHdmiVideoModeList[HDMI_VIDEO_MODE_TYPE].ratio);
+	dprintf(INFO, " LCDC NUM:%d   vfmt %d  , ratio:%d %d \n",  lcdc_num, gRefHdmiVideoModeList[hdmi_video_mode_type].vfmt_val, gRefHdmiVideoModeList[hdmi_video_mode_type].ratio, hdmi_video_mode_type);
 
 	fb_con = &fb_cfg;
 
-#if defined(DEFAULT_DISPLAY_LCD)
+#if 0//defined(DEFAULT_DISPLAY_LCD)
 	gpio_set(TCC_GPEXT1(32), 1);   // V_5P0_EN
 	gpio_set(TCC_GPEXT1(35), 1);   // LVDS_EN
 #endif//
@@ -369,8 +420,8 @@ static void lcdc_io_init_hdmi(unsigned char lcdc_num)
 	tcc_set_peri(PERI_HDMI_PCLK, ENABLE, (50 * 1000 * 1000));
 	tcc_set_peri(PERI_HDMI, ENABLE, XIN_CLK_RATE);
 
-	width = gRefHdmiVideoModeList[HDMI_VIDEO_MODE_TYPE].width;
-	height = gRefHdmiVideoModeList[HDMI_VIDEO_MODE_TYPE].height;
+	width = gRefHdmiVideoModeList[hdmi_video_mode_type].width;
+	height = gRefHdmiVideoModeList[hdmi_video_mode_type].height;
 
 	HDMI_TIMEp.lpw = LCDCTimimgParams[video.resolution].lpw;
 	HDMI_TIMEp.lpc = LCDCTimimgParams[video.resolution].lpc + 1;
@@ -460,7 +511,7 @@ static void lcdc_io_init_hdmi(unsigned char lcdc_num)
 
 //buffalo+
 //2016.08.18
-		display_bootlogo_HDMI(fb_con);
+//		display_bootlogo_HDMI(fb_con);
 		lcdc_set_logo(lcdc_num, width, height, fb_con);
 #else
 		if(lcdc_num)
@@ -537,26 +588,32 @@ unsigned int tc_get_pmap_info(pmap_info_t *pmap)
 	panel_info = tccfb_get_panel();
 
 	pmap[PMAP_FB_WMIXER].size = \
-								ARRAY_MBYTE(panel_info->xres * panel_info->yres * 2 * 2);
+								ARRAY_MBYTE(1920 * 720 * 2 * 2);
+								//ARRAY_MBYTE(panel_info->xres * panel_info->yres * 2 * 2);
+
 	pmap[PMAP_FB_WMIXER].pbase = MEMBASE - pmap[PMAP_FB_WMIXER].size;
 	total_size += pmap[PMAP_FB_WMIXER].size;
 
 	pmap[PMAP_FB_VIDEO].size = \
-							   ARRAY_MBYTE(panel_info->xres * panel_info->yres * 4 * 3);
+							   ARRAY_MBYTE(1920 * 720 * 4 * 3);
+							   //ARRAY_MBYTE(panel_info->xres * panel_info->yres * 4 * 3);
 	pmap[PMAP_FB_VIDEO].pbase = pmap[PMAP_FB_WMIXER].pbase - pmap[PMAP_FB_VIDEO].size;
 	total_size += pmap[PMAP_FB_VIDEO].size;
 
-	pmap[PMAP_EARLYCAM_LOG].size = (3 * SZ_1MB);
+	//pmap[PMAP_EARLYCAM_LOG].size = (3 * SZ_1MB);
+	pmap[PMAP_EARLYCAM_LOG].size = (1 * SZ_1MB);
 	pmap[PMAP_EARLYCAM_LOG].pbase = pmap[PMAP_FB_VIDEO].pbase - pmap[PMAP_EARLYCAM_LOG].size;
 	total_size += pmap[PMAP_EARLYCAM_LOG].size;
 
 	pmap[PMAP_EARLYCAM_PGL].size = \
-								   ARRAY_MBYTE(panel_info->xres * panel_info->yres * 4);
+								   0;
+								   //ARRAY_MBYTE(panel_info->xres * panel_info->yres * 4);
 	pmap[PMAP_EARLYCAM_PGL].pbase = pmap[PMAP_EARLYCAM_LOG].pbase - pmap[PMAP_EARLYCAM_PGL].size;
 	total_size += pmap[PMAP_EARLYCAM_PGL].size;
 
 	pmap[PMAP_EARLYCAM_PREVIEW].size = \
-									   ARRAY_MBYTE(panel_info->xres * panel_info->yres * 4 * 4);
+									   ARRAY_MBYTE(1920 * 720 * 4 * 4);
+									   //ARRAY_MBYTE(panel_info->xres * panel_info->yres * 4 * 4);
 	pmap[PMAP_EARLYCAM_PREVIEW].pbase = pmap[PMAP_EARLYCAM_PGL].pbase - pmap[PMAP_EARLYCAM_PREVIEW].size;
 	total_size += pmap[PMAP_EARLYCAM_PREVIEW].size;
 
@@ -628,7 +685,7 @@ struct fbcon_config *lcdc_init(void) {
 
 	tc_get_pmap_info(&gPmap);
 
-#ifdef DISPLAY_SPLASH_SCREEN_DIRECT
+#if 0//def DISPLAY_SPLASH_SCREEN_DIRECT
 	fb_cfg.stride = fb_cfg.width;
 
 	// load boot logo copy to to end of video memory
@@ -668,7 +725,7 @@ struct fbcon_config *lcdc_init(void) {
 	Image_info.addr0 = (unsigned int)fb_cfg.base;
 	Image_info.Lcdc_layer = 0;
 
-#if defined(DISPLAY_SPLASH_SCREEN_DIRECT)
+#if 0//defined(DISPLAY_SPLASH_SCREEN_DIRECT)
 	Image_info.enable = 1;
 #else
 	Image_info.enable = 0;
@@ -731,7 +788,7 @@ struct fbcon_config *lcdc_init_hdmi(void) {
 int display_splash_logo(struct fbcon_config *fb_con)
 {
 
-#if !defined(DISPLAY_SPLASH_SCREEN_DIRECT)
+#if 1//!defined(DISPLAY_SPLASH_SCREEN_DIRECT)
 	struct lcd_panel *panel_info;
 	panel_info = tccfb_get_panel();
 	lcdc_set_logo(panel_info->dev.lcdc_num, panel_info->xres, panel_info->yres, fb_con);

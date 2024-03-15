@@ -144,7 +144,7 @@ unsigned int FWDN_PROT_CheckIsTransmitReady(void)
 
 static void FWDN_PROT_Data_ReceiveAway(unsigned int length)
 {
-	unsigned int dummy[512/4];
+	unsigned int dummy[512/4] = {'\0'};
 	while(length)
 	{
 		unsigned int packet;
@@ -294,7 +294,7 @@ static void FWDN_PROT_DEVICE_Init(FWDN_COMMAND_T *pFwdnCmd)
 	//else
 	//	FWDN_PROT_ResponseNack();
 
-	unsigned long message[512/4];
+	unsigned long message[512/4] = {'\0'};
 	unsigned int bmFlag = (unsigned int)pFwdnCmd->Param0;
 	int result;
 
@@ -335,6 +335,9 @@ static void FWDN_PROT_DEVICE_InfoRead(FWDN_COMMAND_T *pFwdnCmd)
 
 static void FWDN_PROT_DEVICE_SessionStart(void)
 {
+#if !defined(CONFIG_TCC_CODESONAR_BLOCKED)
+	FWDN_PROT_ResponseAck();
+#else
 	if(FWDN_DRV_SessionStart()==TRUE)
 	{
 		FWDN_PROT_ResponseAck();
@@ -343,6 +346,7 @@ static void FWDN_PROT_DEVICE_SessionStart(void)
 	{
 		FWDN_PROT_ResponseNack();
 	}
+#endif /* CONFIG_TCC_CODESONAR_BLOCKED */
 }
 
 static void FWDN_PROT_DEVICE_SessionEnd(FWDN_COMMAND_T *pFwdnCmd)
@@ -364,7 +368,7 @@ static void FWDN_PROT_DEVICE_SerialNumberWrite(FWDN_COMMAND_T *pFwdnCmd)
 	
 	if( pFwdnCmd->ExtraCmdSize == 32 )
 	{
-		unsigned long serial[32/4];
+		unsigned long serial[32/4] = {'\0'};
 		unsigned int overwrite;
 
 		FWDN_PROT_Data_Receive(serial, pFwdnCmd->ExtraCmdSize);
@@ -416,7 +420,7 @@ static void FWDN_PROT_DEVICE_FirmwareWrite(FWDN_COMMAND_T *pFwdnCmd)
 
 		FWDN_PROT_Response_Reset(&fwdnRsp);
 		fwdnRsp.AckType = FWDN_RSP_NACK;
-		fwdnRsp.Param0 = (unsigned long)err;
+		fwdnRsp.Param0 = (unsigned long)((err < 0) ? 0xFFFFFFFF : err);
 		fwdnRsp.Param1	= (unsigned long)FWDN_DRV_FirmwareStorageID();
 
 		FWDN_PROT_Response(&fwdnRsp);
@@ -506,7 +510,7 @@ static void FWDN_PROT_AREA_Write(FWDN_COMMAND_T *pFwdnCmd)
 	unsigned int lba = (unsigned int)pFwdnCmd->Param0;
 	unsigned int nSector = (unsigned int)pFwdnCmd->Param1;
 	unsigned int nRemain = (unsigned int)pFwdnCmd->Param2;
-	unsigned long _buf[20/4];
+	unsigned long _buf[20/4] = {'\0'};
 	char *name = (char *)_buf;
 	if( pFwdnCmd->ExtraCmdSize != 16 )
 	{
@@ -535,7 +539,7 @@ static void FWDN_PROT_AREA_Read(FWDN_COMMAND_T *pFwdnCmd)
 	unsigned int lba = (unsigned int)pFwdnCmd->Param0;
 	unsigned int nSector = (unsigned int)pFwdnCmd->Param1;
 	unsigned int nRemain = (unsigned int)pFwdnCmd->Param2;
-	unsigned long _buf[20/4];
+	unsigned long _buf[20/4] = {'\0'};
 	char *name = (char *)_buf;
 	if( pFwdnCmd->ExtraCmdSize != 16 )
 	{
@@ -548,6 +552,7 @@ static void FWDN_PROT_AREA_Read(FWDN_COMMAND_T *pFwdnCmd)
 	FWDN_PROT_Data_Receive(name, 16);
 	name[16]=0;
 
+#ifdef CONFIG_TCC_CODESONAR_BLOCKED
 	if( FWDN_DRV_AREA_Read( name
 							,lba
 							,nSector
@@ -556,6 +561,7 @@ static void FWDN_PROT_AREA_Read(FWDN_COMMAND_T *pFwdnCmd)
 							,&FWDN_PROT_Data_Send) == TRUE )
 		FWDN_PROT_ResponseAck();
 	else
+#endif /* CONFIG_TCC_CODESONAR_BLOCKED */
 		FWDN_PROT_ResponseNack();
 }
 
@@ -576,7 +582,7 @@ static void FWDN_PROT_AREA_CalcCRC(FWDN_COMMAND_T *pFwdnCmd)
 	unsigned int nSector = (unsigned int)pFwdnCmd->Param1;
 	unsigned int crc = (unsigned int)pFwdnCmd->Param2;
 	unsigned int nRemain = (unsigned int)pFwdnCmd->Param3;
-	unsigned long _buf[20/4];
+	unsigned long _buf[20/4] = {'\0'};
 	char *name = (char *)_buf;
 	if( pFwdnCmd->ExtraCmdSize != 16 )
 	{
@@ -609,7 +615,7 @@ static void FWDN_PROT_AREA_CalcCRC(FWDN_COMMAND_T *pFwdnCmd)
 static void FWDN_PROT_DUMP_InfoRead(void)
 {
 	FWDN_RESPONSE_T fwdnRsp;
-	unsigned long rsp[0x100/4];
+	unsigned long rsp[0x100/4] = {'\0'};
 
 	FWDN_PROT_Response_Reset(&fwdnRsp);
 	fwdnRsp.AckType = FWDN_RSP_ACK;
@@ -622,6 +628,7 @@ static void FWDN_PROT_DUMP_InfoRead(void)
 
 static void FWDN_PROT_DUMP_BlockRead(FWDN_COMMAND_T *pFwdnCmd)
 {
+#ifdef CONFIG_TCC_CODESONAR_BLOCKED
 	if( FWDN_DRV_DUMP_BlockRead(pFwdnCmd->Param0
 									,pFwdnCmd->Param1
 									,pFwdnCmd->Param2
@@ -629,11 +636,13 @@ static void FWDN_PROT_DUMP_BlockRead(FWDN_COMMAND_T *pFwdnCmd)
 									,&FWDN_PROT_Data_Send) == TRUE )
 		FWDN_PROT_ResponseAck();
 	else
+#endif /* CONFIG_TCC_CODESONAR_BLOCKED */
 		FWDN_PROT_ResponseNack();
 }
 
 static void FWDN_PROT_DUMP_BlockWrite(FWDN_COMMAND_T *pFwdnCmd)
 {
+#ifdef CONFIG_TCC_CODESONAR_BLOCKED
 	if( FWDN_DRV_DUMP_BlockWrite(pFwdnCmd->Param0
 									,pFwdnCmd->Param1
 									,pFwdnCmd->Param2
@@ -641,6 +650,7 @@ static void FWDN_PROT_DUMP_BlockWrite(FWDN_COMMAND_T *pFwdnCmd)
 									,&FWDN_PROT_Data_Receive) == TRUE )
 		FWDN_PROT_ResponseAck();
 	else
+#endif /* CONFIG_TCC_CODESONAR_BLOCKED */
 		FWDN_PROT_ResponseNack();
 }
 
@@ -648,7 +658,7 @@ static void FWDN_PROT_Dump(FWDN_COMMAND_T *pFwdnCmd)
 {
 	unsigned int uiAddress = (unsigned int)pFwdnCmd->Param0;
 	unsigned int uiSize = (unsigned int)pFwdnCmd->Param1;
-	unsigned long _buf[20/4];
+	unsigned long _buf[20/4] = {'\0'};
 	char *name = (char *)_buf;
 	if( pFwdnCmd->ExtraCmdSize != 16 )
 	{
@@ -673,24 +683,28 @@ static void FWDN_PROT_Dump(FWDN_COMMAND_T *pFwdnCmd)
 
 static void FWDN_PROT_TOTALBIN_Read(FWDN_COMMAND_T *pFwdnCmd)
 {
+#ifdef CONFIG_TCC_CODESONAR_BLOCKED
 	if( FWDN_DRV_TOTALBIN_Read(&_loc_Response_NotifyData
 								,&FWDN_PROT_Data_Send) == TRUE )
 		FWDN_PROT_ResponseAck();
 	else
+#endif /* CONFIG_TCC_CODESONAR_BLOCKED */
 		FWDN_PROT_ResponseNack();
 }
 
 static void FWDN_PROT_TOTALBIN_Write(FWDN_COMMAND_T *pFwdnCmd)
 {
+#ifdef CONFIG_TCC_CODESONAR_BLOCKED
 	if( FWDN_DRV_TOTALBIN_Write(&_loc_RquestData) == TRUE )
 		FWDN_PROT_ResponseAck();
 	else
+#endif /* CONFIG_TCC_CODESONAR_BLOCKED */
 		FWDN_PROT_ResponseNack();
 }
 
 static void FWDN_PROT_TEST(FWDN_COMMAND_T *pFwdnCmd)
 {
-	unsigned long _buf[512/4];
+	unsigned char _buf[256] = {'\0'};
 	unsigned char *dummy = (unsigned char *)_buf;
 	unsigned int dataSize = pFwdnCmd->ExtraCmdSize;
 	unsigned int packetSize;
@@ -700,7 +714,7 @@ static void FWDN_PROT_TEST(FWDN_COMMAND_T *pFwdnCmd)
 		{
 			while( dataSize > 0 )
 			{
-				packetSize = min(dataSize,512);
+				packetSize = min(dataSize,256);
 				if( FWDN_PROT_Data_Receive((void*)dummy,packetSize) != packetSize )
 					break;
 				dataSize -= packetSize;
@@ -709,11 +723,11 @@ static void FWDN_PROT_TEST(FWDN_COMMAND_T *pFwdnCmd)
 		}
 		case FWDN_CMD_TEST_RECEIVE:
 		{
-			for(packetSize=0;packetSize<512;packetSize++)
+			for(packetSize=0;packetSize<256;packetSize++)
 				dummy[packetSize] = (unsigned char)packetSize;
 			while( dataSize > 0 )
 			{
-				packetSize = min(dataSize,512);
+				packetSize = min(dataSize,256);
 				if( FWDN_PROT_Data_Send((void*)dummy,packetSize) != packetSize )
 					break;
 				dataSize -= packetSize;

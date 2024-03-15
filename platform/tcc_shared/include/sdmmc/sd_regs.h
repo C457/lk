@@ -114,6 +114,13 @@
 #define NORMAL_INT_CDINT					(1<<8)
 #define NORMAL_INT_ERR						(1<<15)
 
+//CMD13^M
+#define SD_STS_SWITCH_ERR                                      (1 << 7)
+#define SD_STS_READY_FOR_DATA                                  (1 << 8)
+#define SD_STS_CURR_STATE                                      (0xF << 9)
+#define SD_STS_PRG                                             (7 << 9)
+#define SD_STS_STATUS_MASK                                     (~0x0206BF7F)
+
 #define	HwSD_TCMD_CMDIDX(X)				((X)*Hw24)						// Command Index
 #define	HwSD_TCMD_CMDIDX_MASK			HwSD_TCMD_CMDIDX(63)
 #define	HwSD_TCMD_CTYPE(X)					((X)*Hw22)						// Suspend, Resume, Abort, Normal
@@ -501,7 +508,10 @@ typedef struct EXTCSDREG_t		//structure of Extended CSD register
 } sEXTCSDREG;
 
 struct ext_csd_441 {	// B120040-ksjung
-	unsigned char Reserved_133[134];  // [133:0]
+//	unsigned char Reserved_133[134];  // [133:0]
+	unsigned char Reserved_33[34];	// [33:0]
+	unsigned char POWER_OFF_NOTI;	// [34] 		Power Off Notification
+	unsigned char Reserved_133[99]; // [133:35]
 	unsigned char SEC_BAD_BLK_MGMNT;  // [134]      Bad Block Management Mode
 	unsigned char Reserved_135;       // [135]
 	unsigned long ENH_START_ADDR;     // [139:136]  Enhanced User Data Start Address

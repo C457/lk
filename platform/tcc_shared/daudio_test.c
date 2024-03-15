@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sdmmc/emmc.h>
+#include <partition_parser.h>
+#include <arch/ops.h>
 
 #ifndef CRC_CHECK_EMMC
 #define CRC_CHECK_EMMC_DEBUG
@@ -10,6 +12,8 @@
 #ifdef CRC_CHECK_EMMC
 #define BYTE_TO_SECTOR(X)			((X + 511) >> 9)
 static unsigned int crc_sum;
+
+extern unsigned skip_loading_quickboot;
 
 static unsigned int crc32(unsigned int prev_crc, unsigned char const *p, unsigned int len)
 {
@@ -206,12 +210,102 @@ long strtol(const char* nptr, const char** endptr, int base)
 	return value;
 }
 
+//buffalo+
+static void erase_partitions()
+{
+	unsigned char str[10] = {0};
+	int exit = 0;
+	int i = 0, err = 0;
+	unsigned int loop_count = 0;
+
+	unsigned int ptn_index;
+	unsigned int ptn_size;
+	unsigned int buffer_size;
+	unsigned long long ptn = 0;
+	char *ptn_name;
+
+	char data[2048] = {0};
+
+	while(!exit) {
+		dprintf(INFO, "\n");
+		dprintf(INFO, " choose the partition to erase()\n");
+		dprintf(INFO, "\n");
+
+		dprintf(INFO, " (0) misc\n");
+		dprintf(INFO, " (1) cache\n");
+		dprintf(INFO, " (2) data\n");
+		dprintf(INFO, " (3) snapshot\n");
+		dprintf(INFO, " (4) settings\n");
+		dprintf(INFO, " =============\n");
+		dprintf(INFO, " (5) Back\n");
+		dprintf(INFO, "\n");
+
+
+		while(1) {
+			if(getc(&str[0]) == 0) {
+				if((str[0] >= '0') && (str[0] <= '5'))
+					break;
+			}
+		}
+
+		switch(str[0]) {
+			case '0':
+				ptn_name = "misc";
+				break;
+
+			case '1':
+				ptn_name = "cache";
+				skip_loading_quickboot =1;
+				break;
+
+			case '2':
+				ptn_name = "data";
+				skip_loading_quickboot =1;
+				break;
+
+			case '3':
+				ptn_name = "snapshot";
+				break;
+
+			case '4':
+				ptn_name = "settings";
+				break;
+
+			case '5':
+				exit = 1;
+				return ;
+		}
+
+		ptn_index = partition_get_index(ptn_name);
+		ptn_size = partition_get_size(ptn_index);
+		ptn = partition_get_offset(ptn_index);
+
+		if(ptn == 0) {
+			dprintf(INFO, "Partition table doesn't exist\n");
+			return;
+		}
+
+		if(tcc_write("fastboot_erase", ptn, ptn_size >> 9, 0)) {
+			dprintf(INFO, "\n");
+			dprintf(INFO, "\x1b[41m [%s]erase fail! \x1b[0m\n", ptn_name);
+			dprintf(INFO, "\n");
+		}
+		else {
+			dprintf(INFO, "\n");
+			dprintf(INFO, "\x1b[44m [%s]erase success! \x1b[0m\n", ptn_name);
+			dprintf(INFO, "\n");
+		}
+	}
+}
+
+
 #define DDR_START_ADDR	0x80000000
 void run_ddr_test()
 {
 	unsigned int StartAddr = DDR_START_ADDR;
 	unsigned int EndAddr = 0xBFFFFFFF;
 	int exit = 0;
+	int count = 1;
 
 	unsigned char str[32] = {0};
 
@@ -224,16 +318,18 @@ void run_ddr_test()
 
 		dprintf(INFO, "\n");
 		dprintf(INFO, " (0) Start Test\n");
+		dprintf(INFO, " (1) Start Test_disable\n");
 
-		dprintf(INFO, " (1) DDR Test Start Address Setting\n");
-		dprintf(INFO, " (2) DDR Test End Address Setting\n");
-
-		dprintf(INFO, " (3) Back\n");
+		dprintf(INFO, " (2) DDR Test Start Address Setting\n");
+		dprintf(INFO, " (3) DDR Test End Address Setting\n");
+		dprintf(INFO, " (4) Start Test(Infinite loop) \n");
+		dprintf(INFO, " (5) Start Test_disable(Infinite loop) \n");
+		dprintf(INFO, " (6) Back\n");
 		dprintf(INFO, "\n");
 
 		while(1) {
 			if(getc(&str[0]) == 0) {
-				if((str[0] >= '0') && (str[0] <= '3'))
+				if((str[0] >= '0') && (str[0] <= '6'))
 					break;
 			}
 		}
@@ -244,6 +340,12 @@ void run_ddr_test()
 				break;
 
 			case '1':
+				arch_disable_cache(DCACHE);
+				ddr_mem_test(StartAddr, EndAddr);
+				arch_enable_cache(DCACHE);
+				break;
+
+			case '2':
 				while(1) {
 					dprintf(INFO, " Enter new Start address : ");
 					gets(str);
@@ -253,7 +355,7 @@ void run_ddr_test()
 				}
 				break;
 
-			case '2':
+			case '3':
 				while(1) {
 					dprintf(INFO, " Enter new End address : ");
 					gets(str);
@@ -263,7 +365,23 @@ void run_ddr_test()
 				}
 				break;
 
-			case '3':
+			case '4':
+				while(1){
+					printf("---------count=%d---------\n", count++);
+					ddr_mem_test(StartAddr, EndAddr);
+				}
+				break;
+
+			case '5':
+				arch_disable_cache(DCACHE);
+				while(1){
+					printf("---------count=%d---------\n", count++);
+					ddr_mem_test(StartAddr, EndAddr);
+				}
+				arch_enable_cache(DCACHE);
+				break;
+
+			case '6':
 				exit = 1;
 				break;
 		}
@@ -284,6 +402,7 @@ void daudio_test_start(void)
 #endif
 	dprintf(INFO, "(2) DDR Memory Test\n");
 	dprintf(INFO, "(3) DDR Over clock\n");
+	dprintf(INFO, "(4) Erase partitions\n");
 	dprintf(INFO, "===========================================\n");
 
 	while (is_test_mode) {
@@ -305,6 +424,12 @@ void daudio_test_start(void)
 				dram_overclock_test(0);
 				is_test_mode = 0;
 				break;
+			case '4':
+				erase_partitions();
+				is_test_mode = 0;
+				break;
 		}
 	}
+	if (skip_loading_quickboot)
+		dprintf(INFO, "Now!!! Currently force_normal booting starting....\n");
 }

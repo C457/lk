@@ -62,11 +62,8 @@ void _panic(void *caller, const char *fmt, ...)
 
 int _dputs(const char *str)
 {
-	if(gpio_get( GPIO_PORTC|22) || mem_test_mode)
-	{
-		while(*str != 0) {
-			_dputc(*str++);
-		}
+	while(*str != 0) {
+		_dputc(*str++);
 	}
 	return 0;
 }
@@ -84,19 +81,16 @@ int _dprintf(const char *fmt, ...)
 	char ts_buf[13];
 	int err;
 
-	if(gpio_get( GPIO_PORTC|22) || mem_test_mode)
-	{
+	snprintf(ts_buf, sizeof(ts_buf), "[%u] ", current_time());
+	dputs(ALWAYS, ts_buf);
 
-		snprintf(ts_buf, sizeof(ts_buf), "[%u] ", current_time());
-		dputs(ALWAYS, ts_buf);
+	va_list ap;
+	va_start(ap, fmt);
+	err = vsnprintf(buf, sizeof(buf), fmt, ap);
+	va_end(ap);
 
-		va_list ap;
-		va_start(ap, fmt);
-		err = vsnprintf(buf, sizeof(buf), fmt, ap);
-		va_end(ap);
+	dputs(ALWAYS, buf);
 
-		dputs(ALWAYS, buf);
-	}
 	return err;
 }
 

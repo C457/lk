@@ -14,6 +14,7 @@
 
 #include <debug.h>
 #include <string.h>
+#include <timer.h>
 
 #include "reg_physical.h"
 #include "cm4_cmd.h"
@@ -107,62 +108,57 @@ int main(void) {
 		if(!ret) {
 			switch(msg.cmd) {
 			case MAILBOX_MSG_EARLYCAMERA_STOP:
-				//printk("MAILBOX_MSG_EARLYCAMERA_STOP\n");
-				dprintf(SPEW, "MAILBOX_MSG_EARLYCAMERA_STOP\n");
+				printk("MAILBOX_MSG_EARLYCAMERA_STOP\n");
 
 				tcc_rear_camera_display(OFF);
 				tcc_rear_camera_wmix_channel_prioty();
 				tcc_cif_stop_stream();
 				sensor_if_close();
-				
+
 				msg.data[0]	= Viocmg_info->early_cam_mode;
 				dprintf(SPEW, "!@#---- EarlyCamera - gear_status: 0x%08x\n", msg.data[0]);
 				msg.cmd		= (MAILBOX_MSG_EARLYCAMERA_STOP | MAILBOX_MSG_ACK);
 				tcc_mbox_send_msg(&msg);
 				mdelay(100);
-				
+
 				return 0;
-				
+
 			case MAILBOX_MSG_EARLYCAMERA_EXIT:
-				//printk("MAILBOX_MSG_EARLYCAMERA_EXIT\n");
-				dprintf(SPEW, "MAILBOX_MSG_EARLYCAMERA_EXIT\n");
+				printk("MAILBOX_MSG_EARLYCAMERA_EXIT\n");
 
 				msg.data[0]	= Viocmg_info->early_cam_mode;
 				dprintf(SPEW, "!@#---- EarlyCamera - gear_status: 0x%08x\n", msg.data[0]);
 				msg.cmd		= (MAILBOX_MSG_EARLYCAMERA_EXIT | MAILBOX_MSG_ACK);
 				tcc_mbox_send_msg(&msg);
 				mdelay(100);
-				
+
 				return 0;
-				
+
 			case MAILBOX_MSG_EARLYCAMERA_DISABLE_RECOVERY:
-				//printk("MAILBOX_MSG_EARLYCAMERA_DISABLE_RECOVERY\n");
-				dprintf(SPEW, "MAILBOX_MSG_EARLYCAMERA_DISABLE_RECOVERY\n");
+				printk("MAILBOX_MSG_EARLYCAMERA_DISABLE_RECOVERY\n");
 
 				recovery_check_enabled = 0;
 				msg.cmd = (MAILBOX_MSG_EARLYCAMERA_DISABLE_RECOVERY | MAILBOX_MSG_ACK);
 				tcc_mbox_send_msg(&msg);
-				
+
 				break;
-				
+
 			case MAILBOX_MSG_EARLYCAMERA_ENABLE_RECOVERY:
-				//printk("MAILBOX_MSG_EARLYCAMERA_ENABLE_RECOVERY\n");
-				dprintf(SPEW, "MAILBOX_MSG_EARLYCAMERA_ENABLE_RECOVERY\n");
+				printk("MAILBOX_MSG_EARLYCAMERA_ENABLE_RECOVERY\n");
 
 				recovery_check_enabled = 1;
 				msg.cmd = (MAILBOX_MSG_EARLYCAMERA_ENABLE_RECOVERY | MAILBOX_MSG_ACK);
 				tcc_mbox_send_msg(&msg);
-				
+
 				break;
-				
+
 			case MAILBOX_MSG_EARLYCAMERA_PGL:
-				//printk("MAILBOX_MSG_EARLYCAMERA_PGL\n");
-				dprintf(SPEW, "MAILBOX_MSG_EARLYCAMERA_PGL\n");
-				
+				printk("MAILBOX_MSG_EARLYCAMERA_PGL\n");
+
 				if(!pgl_enable) {
 					pgl_enable = 1;
 					tcc_cif_set_pgl();
-					
+
 					dprintf(SPEW, "PGL enable!\n");
 				}
 #if 0
@@ -172,8 +168,7 @@ int main(void) {
 				break;
 
 			case MAILBOX_MSG_EARLYCAMERA_PMAP:
-				//printk("MAILBOX_MSG_EARLYCAMERA_PMAP\n");
-				dprintf(SPEW, "MAILBOX_MSG_EARLYCAMERA_PMAP\n");
+				printk("MAILBOX_MSG_EARLYCAMERA_PMAP\n");
 
 				tcc_rear_camera_display(OFF);
 				tcc_cif_stop_stream();
@@ -186,17 +181,15 @@ int main(void) {
 				break;
 
 			case MAILBOX_MSG_EARLYCAMERA_KNOCK:
-				//printk("MAILBOX_MSG_EARLYCAMERA_KNOCK\n");
-				dprintf(SPEW, "MAILBOX_MSG_EARLYCAMERA_KNOCK\n");
-				
+				printk("MAILBOX_MSG_EARLYCAMERA_KNOCK\n");
+
 				msg.cmd = (MAILBOX_MSG_EARLYCAMERA_KNOCK | MAILBOX_MSG_ACK);
 				tcc_mbox_send_msg(&msg);
-				
+
 				break;
-				
+
 			default:
-				//printk("The message(0x%08x) from Mailbox is wrong.\n", msg.cmd);
-				dprintf(SPEW, "The message(0x%08x) from Mailbox is wrong.\n", msg.cmd);
+				printk("The message(0x%08x) from Mailbox is wrong.\n", msg.cmd);
 				break;
 			}
 #if 0

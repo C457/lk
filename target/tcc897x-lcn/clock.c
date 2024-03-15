@@ -27,14 +27,14 @@
 void clock_init(void)
 {
 	dprintf(INFO,"clock_init()\n");
-	pfuze100_init(I2C_CH_MASTER2);
-
+	tcc_set_clkctrl( FBUS_IO,         ENABLE,  250000000);  /* req:250MHz, real:250MHz = PLL0(1000)/4 */
+	dprintf(INFO,"pmic init skip\n");
+//	pfuze100_init(I2C_CH_MASTER2);
 	tcc_set_clkctrl( FBUS_CPU0,       ENABLE,  1000000000);
 	tcc_set_clkctrl( FBUS_CPU1,      DISABLE,  800000000);	/* req:800MHz, real:768MHz = PLL1(768)/1 */
 //	tcc_set_clkctrl( FBUS_MEM,        ENABLE,  600000000);	/* Do not change membus */
 	tcc_set_clkctrl( FBUS_DDI,        ENABLE,  400000000);	/* req:400MHz, real:384MHz = PLL1(768)/2 */
 	tcc_set_clkctrl( FBUS_GPU,        ENABLE,  525000000);	/* req:525MHz, real:500MHz = PLL0(1000)/2 */
-	tcc_set_clkctrl( FBUS_IO,         ENABLE,  250000000);	/* req:250MHz, real:250MHz = PLL0(1000)/4 */
 	tcc_set_clkctrl( FBUS_VBUS,      ENABLE,  360000000);	/* req:360MHz, real:360MHz = PLL2(1080)/3 */
 	tcc_set_clkctrl( FBUS_CODA,      ENABLE,  360000000);	/* req:360MHz, real:360MHz = PLL2(1080)/3 */
 	tcc_set_clkctrl( FBUS_HSIO,       ENABLE,  333333334); /* req:333MHz, real:333MHz = PLL0(1000)/3 */

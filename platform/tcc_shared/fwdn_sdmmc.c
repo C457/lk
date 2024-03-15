@@ -245,7 +245,11 @@ int fwdn_mmc_get_serial_num(void)
 int FwdnSetBootSDSerial(unsigned char *ucData, unsigned int overwrite)
 {
 	ioctl_diskinfo_t  disk_info;
+#if !defined(CONFIG_TCC_CODESONAR_BLOCKED)
+	unsigned char   ucTempData[512] = {'\0'};
+#else
 	unsigned char   ucTempData[512];
+#endif
 	int       iRev;
 	ioctl_diskrwpage_t  header;
 
@@ -255,6 +259,11 @@ int FwdnSetBootSDSerial(unsigned char *ucData, unsigned int overwrite)
 	}
 	if (disk_info.sector_size != 512)
 		return -1;
+#if !defined(CONFIG_TCC_CODESONAR_BLOCKED)
+	if (ucData == NULL)
+		return -1;
+#else
+#endif
 
 	memcpy( FWDN_DeviceInformation.DevSerialNumber, ucData , 32);
 	g_uiFWDN_OverWriteSNFlag  =  overwrite;

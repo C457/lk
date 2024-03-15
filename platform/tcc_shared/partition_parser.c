@@ -44,13 +44,16 @@ extern struct guid_partition dual_boot_partitions[];
 static char *ext4_partitions[] = {"system" , "data", "cache", "telesecurity", "telesecurity_backup", "qb_data", "upgrade", "vr1", "vr2", "oem_data", "log", "navi", "navi2"};
 static char *raw_partitions[] = {"boot","recovery", "splash" , "kpanic", "misc", "settings", "dtb", "snapshot", "recovery_mirror", "splash_mirror", "boot_mirror",  "reserved"};
 #elif defined(PIO_WIDE_4GB_PARTITION)
-static char *ext4_partitions[] = {"system" , "data", "cache", "qb_data", "upgrade", "log"};
+static char *ext4_partitions[] = {"system" , "data", "cache", "qb_data", "upgrade","oem_data" "log"};
 static char *raw_partitions[] = {"boot","recovery", "splash" , "kpanic", "misc", "settings", "dtb", "snapshot" };
 #elif defined(PIO_WIDE_128GB_PARTITION)
 static char *ext4_partitions[] = {"system" , "data", "cache", "telesecurity", "telesecurity_backup", "qb_data", "upgrade", "vr1", "vr2", "oem_data", "log", "navi", "navi2"};
 static char *raw_partitions[] = {"boot","recovery", "splash" , "kpanic", "misc", "settings", "dtb", "snapshot", "recovery_mirror", "splash_mirror", "boot_mirror",  "reserved"};
 #elif defined(PIO_WIDE_8GB_PARTITION)
 static char *ext4_partitions[] = {"system" , "userdata", "cache", "qb_data", "upgrade", "oem_data", "log"};
+static char *raw_partitions[] = {"boot","recovery", "splash" , "kpanic", "misc", "settings", "dtb", "snapshot" };
+#elif defined(PIO_WIDE_8GB_PARTITION2)
+static char *ext4_partitions[] = {"system" , "userdata", "cache", "qb_data", "upgrade", "oem_data","vr1", "log"};
 static char *raw_partitions[] = {"boot","recovery", "splash" , "kpanic", "misc", "settings", "dtb", "snapshot" };
 #else
 static char *ext4_partitions[] = {"system" , "userdata", "cache", "qb_data"};
@@ -107,7 +110,7 @@ unsigned int read_partition_tlb()
 
 static uint32_t read_boot_MBR()
 {
-	unsigned char buffer[512];
+	unsigned char buffer[512]={'\0'};
 	unsigned int dtype;
 	unsigned int dfirstsec;
 	unsigned int EBR_first_sec;
@@ -213,8 +216,8 @@ static uint32_t read_boot_MBR()
 
 static uint32_t read_boot_GPT()
 {
-	unsigned char* data = malloc(512);
 	int ret = 0;
+	unsigned char* data = malloc(512);
 	unsigned int header_size;
 	unsigned long long first_usable_lba;
 	unsigned long long backup_header_lba;
@@ -231,6 +234,13 @@ static uint32_t read_boot_GPT()
 	partition_count = 0;
 
 	/* Get the density of the Storage device */
+#if !defined(CONFIG_TCC_CODESONAR_BLOCKED)
+	ret = 1;
+	if (data == NULL)
+		return ret;
+
+	memset(data, 0x00, 512 * sizeof(unsigned char));
+#endif
 
 	/* Print out the GPT first */
 	ret = tcc_read(PROTECTIVE_MBR_SIZE, data, BLOCK_SIZE);
@@ -257,11 +267,13 @@ static uint32_t read_boot_GPT()
 		backup_header_lba = storage_size_sec - 1;
 		tcc_read((backup_header_lba * BLOCK_SIZE), data, BLOCK_SIZE);
 
+#ifdef CONFIG_TCC_CODESONAR_BLOCKED
 		if (ret) {
 			dprintf(CRITICAL,
 					"GPT: Could not read backup gpt from Storage\n");
 			return ret;
 		}
+#endif /* CONFIG_TCC_CODESONAR_BLOCKED */
 
 		ret = partition_parse_gpt_header(data, &first_usable_lba,
 				&partition_entry_size,
@@ -446,6 +458,11 @@ static unsigned int partition_parse_gpt_header(unsigned char *buffer,
 		unsigned int *header_size,
 		unsigned int *max_partition_count)
 {
+#if !defined(CONFIG_TCC_CODESONAR_BLOCKED)
+	if (buffer == NULL)
+		return 1;
+#else
+#endif
 
 	/* Check GPT Signature */
 	if (((uint32_t *) buffer)[0] != GPT_SIGNATURE_2 ||
@@ -537,8 +554,17 @@ static void prepare_mbr(unsigned char* mbr, unsigned int lba)
 
 static void prepare_guid_header(struct guid_partition_tbl *ptbl, unsigned int lba)
 {
-	struct uefi_header *hdr = &ptbl->guid_header;
+#if !defined(CONFIG_TCC_CODESONAR_BLOCKED)
+	struct uefi_header *hdr = NULL;
 
+	if(NULL == ptbl)
+	{
+		return;
+	}
+	hdr = &ptbl->guid_header;
+#else
+	struct uefi_header *hdr = &ptbl->guid_header;
+#endif
 	memset(ptbl, 0, sizeof(*ptbl));
 
 	prepare_mbr(ptbl->mbr, lba - 1);
@@ -558,9 +584,20 @@ static void prepare_guid_header(struct guid_partition_tbl *ptbl, unsigned int lb
 
 static void fill_crc32(struct guid_partition_tbl *ptbl)
 {
+#if !defined(CONFIG_TCC_CODESONAR_BLOCKED)
+	struct uefi_header *hdr = NULL;
+	unsigned int crc;
+
+	if(NULL == ptbl)
+	{
+		return;
+	}
+	hdr = &ptbl->guid_header;
+#else
 	struct uefi_header *hdr = &ptbl->guid_header;
 	unsigned int crc;
-	
+#endif
+
 	crc = 0;
 	crc = calculate_crc32((unsigned char*)ptbl->guid_entry, hdr->efi_entries_count*ENTRY_SIZE);
 	hdr->efi_entries_crc32 = crc;
@@ -573,9 +610,23 @@ static void fill_crc32(struct guid_partition_tbl *ptbl)
 static int guid_add_partition(struct guid_partition_tbl *ptbl, unsigned long long first_lba,
 	unsigned long long last_lba, const char* name)
 {
+#if !defined(CONFIG_TCC_CODESONAR_BLOCKED)
+	struct uefi_header *hdr = NULL;
+	struct gpt_partition_entry *entry = NULL;
+	unsigned int idx, iname;
+
+	if ((NULL == ptbl) || (NULL == name))
+	{
+		dprintf(INFO, "guid_add_partition ptbl : %d, name : %d\n", ptbl, name);
+		return -1;
+	}
+	hdr = &ptbl->guid_header;
+	entry = ptbl->guid_entry;
+#else
 	struct uefi_header *hdr = &ptbl->guid_header;
 	struct gpt_partition_entry *entry = ptbl->guid_entry;
 	unsigned int idx, iname;
+#endif
 
 	debug = 0;
 	while(debug);
@@ -617,7 +668,12 @@ static int guid_partition_format(struct guid_partition* partitions)
 
 	storage_size = tcc_get_storage_capacity();
 
-	if(storage_size < 0){
+#if !defined(CONFIG_TCC_CODESONAR_BLOCKED)
+	if(storage_size == 0)
+#else
+	if(storage_size < 0)
+#endif
+	{
 		dprintf(INFO , "Target Storage has no space !!\n");
 		goto error;
 	}
@@ -649,11 +705,21 @@ static int guid_partition_format(struct guid_partition* partitions)
 	}
 
 	dprintf(INFO , "complete write partition table to target storage \n");
+#if !defined(CONFIG_TCC_CODESONAR_BLOCKED)
+	if (ptbl)
+		free(ptbl);
+#else
 	free(ptbl);
+#endif
 	return 0;
 
 error:
+#if !defined(CONFIG_TCC_CODESONAR_BLOCKED)
+	if (ptbl)
+		free(ptbl);
+#else
 	free(ptbl);
+#endif
 	return -1;
 
 }
@@ -668,20 +734,32 @@ int guid_format(const char *cmd)
 		partitions = android_boot_partitions;
 	}
 	else if(!strcmp(cmd , " chrome")){
-		if(target_is_chrome_boot()){
+#ifdef _CHROME_BOOT
+		//if(target_is_chrome_boot())
+		{
 			partitions = chrome_boot_partitions;
-		}else{
+		}
+		//else
+#else /* _CHROME_BOOT */
+		{
 			dprintf(CRITICAL, "NOT Support Chrome OS Boot for taret Device \n");
 			goto err;
 		}
+#endif /* _CHROME_BOOT */
 	}
 	else if(!strcmp(cmd , " dual")) {
-		if(target_is_dual_boot()){
+#ifdef _CHROME_DUAL_BOOT
+		//if(target_is_dual_boot())
+		{
 			partitions = dual_boot_partitions;
-		}else{
+		}
+		//else
+#else /* _CHROME_DUAL_BOOT */
+		{
 			dprintf(CRITICAL, "NOT Support Chrome os and Android dual boot for target Device\n");
 			goto err;
 		}
+#endif /* _CHROME_DUAL_BOOT */
 	}
 	else goto err;
 

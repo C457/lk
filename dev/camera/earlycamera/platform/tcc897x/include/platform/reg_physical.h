@@ -46,6 +46,7 @@ typedef union {
 #define HwGPIOF_BASE						(0x74200140)
 #define HwGPIOG_BASE						(0x74200180)
 
+#define TCC_TIMER_BASE						(0x74300000)
 
 /*******************************************************************************
 *

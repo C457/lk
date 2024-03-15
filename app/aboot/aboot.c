@@ -87,6 +87,7 @@ extern int lk_in_normalworld;
 #include <dev/camera/camera.h>
 
 #include "hdmi_config.h"
+#include <daudio_ver.h>
 
 int check_ret;
 
@@ -112,12 +113,21 @@ extern unsigned *target_atag_panel(unsigned *ptr);
 extern unsigned* target_atag_display(unsigned* ptr);
 extern void target_cmdline_vmalloc(char *cmdline);
 
+#if !defined(CONFIG_TCC_CODESONAR_BLOCKED)
+extern int dgetc(char *c, bool wait);
+#endif
+
 extern void target_cmdline_daudio_lk_version(char *cmdline);
 extern void target_cmdline_daudio_board_version(char *cmdline);
 extern void target_cmdline_daudio_board_adc(char *cmdline);
 extern void target_cmdline_daudio_em_setting_info(char* cmdline);
 extern void target_cmdline_daudio_quickboot_info(char* cmdline);
 extern void target_cmdline_daudio_active_partition(char* cmdline);
+
+#if WITH_DEBUG_LOG_BUF
+extern void send_uart_to_kernel(void);
+#endif
+
 #ifdef FACTORYRST_CMDLINE
 extern void target_cmdline_factory_reset_flag(char *cmdline);
 #endif
@@ -139,6 +149,8 @@ int load_device_tree(struct boot_img_hdr *hdr);
 #define FORCE_NORMAL_MODE   0x77665503 /*      skip quickboot mode */
 //-[TCCQB]
 //
+#define PANIC_BOOT_MODE   0x77665504
+#define ANDROID_REBOOT    0x77665505
 
 #if defined(CONFIG_UBOOT_RECOVERY_USE) && defined(FEATURE_SDMMC_MMC43_BOOT)
 unsigned boot_into_uboot = 0;
@@ -288,6 +300,22 @@ unsigned char *update_cmdline(const char * cmdline)
 	char *cmdline_final = NULL;
 
 #if PLATFORM_TCC
+#if !defined(CONFIG_TCC_CODESONAR_BLOCKED)
+	char *dst = NULL;
+
+	if(!cmdline[0])
+		return (unsigned char *)cmdline;
+
+	dst = (char*) malloc((4096 + 4) & (~3));
+	if(dst == NULL)
+	{
+		printf("%s : cmd line alloc failed\n", __func__);
+		return dst;
+	}
+	cmdline_final = dst;
+
+	strcpy(cmdline_final, (char*)cmdline);
+#else
 	char *dst = (char*) malloc((4096 + 4) & (~3));
 	cmdline_final = dst;
 
@@ -295,6 +323,7 @@ unsigned char *update_cmdline(const char * cmdline)
 		strcpy(cmdline_final, (char*)cmdline);
 	else
 		return (unsigned char *)cmdline;
+#endif
 
 	target_cmdline_loglevel(cmdline_final);
 	target_cmdline_serialno(cmdline_final);
@@ -316,9 +345,15 @@ unsigned char *update_cmdline(const char * cmdline)
 	target_cmdline_daudio_lk_version(cmdline_final);
 	target_cmdline_daudio_board_version(cmdline_final);
 	target_cmdline_daudio_em_setting_info(cmdline_final);
-	target_cmdline_daudio_quickboot_info(cmdline_final);
+//	target_cmdline_daudio_quickboot_info(cmdline_final);
 	target_cmdline_daudio_board_adc(cmdline_final);
 	target_cmdline_daudio_active_partition(cmdline_final);
+
+#ifdef MOBIS_GET_DATA_FROM_MICOM
+	target_cmdline_mobis_vehicle_code(cmdline_final);
+	target_cmdline_mobis_country_code(cmdline_final);
+#endif
+
 #ifdef FACTORYRST_CMDLINE
 	target_cmdline_factory_reset_flag(cmdline_final);
 #endif
@@ -331,9 +366,12 @@ unsigned char *update_cmdline(const char * cmdline)
 		cmdline_len = strlen(cmdline);
 		have_cmdline = 1;
 	}
-	if (target_is_emmc_boot()) {
+#if _EMMC_BOOT
+	//if (target_is_emmc_boot())
+	{
 		cmdline_len += strlen(emmc_cmdline);
 	}
+#endif /* _EMMC_BOOT */
 
 	cmdline_len += strlen(usb_sn_cmdline);
 	cmdline_len += strlen(sn_buf);
@@ -343,9 +381,11 @@ unsigned char *update_cmdline(const char * cmdline)
 		cmdline_len += strlen(battchg_pause);
 	}
 
+#if defined(TSBM_ENABLE)
 	if(target_use_signed_kernel() && auth_kernel_img) {
 		cmdline_len += strlen(auth_kernel);
 	}
+#endif /* defined(TSBM_ENABLE) */
 
 	if (cmdline_len > 0) {
 		const char *src;
@@ -358,12 +398,15 @@ unsigned char *update_cmdline(const char * cmdline)
 			src = cmdline;
 			while ((*dst++ = *src++));
 		}
-		if (target_is_emmc_boot()) {
+#if _EMMC_BOOT
+		//if (target_is_emmc_boot())
+		{
 			src = emmc_cmdline;
 			if (have_cmdline) --dst;
 			have_cmdline = 1;
 			while ((*dst++ = *src++));
 		}
+#endif /* _EMMC_BOOT */
 
 		src = usb_sn_cmdline;
 		if (have_cmdline) --dst;
@@ -380,11 +423,13 @@ unsigned char *update_cmdline(const char * cmdline)
 			while ((*dst++ = *src++));
 		}
 
+#if defined(TSBM_ENABLE)
 		if(target_use_signed_kernel() && auth_kernel_img) {
 			src = auth_kernel;
 			if (have_cmdline) --dst;
 			while ((*dst++ = *src++));
 		}
+#endif /* defined(TSBM_ENABLE) */
 	}
 #endif
 
@@ -469,10 +514,13 @@ void generate_atags(unsigned *ptr, const char *cmdline,
 
 	/* Skip MTD partition ATAGS for eMMC boot */
 #if _NAND_MTD
-	if (!target_is_emmc_boot()) {
+#if !defined(_EMMC_BOOT)
+	//if (!target_is_emmc_boot())
+	{
 		ptr = atag_ptable(&ptr);
 	}
-#endif
+#endif /* !defined(_EMMC_BOOT) */
+#endif /* _NAND_MTD */
 
 	ptr = atag_cmdline(ptr, cmdline);
 
@@ -489,6 +537,72 @@ void generate_atags(unsigned *ptr, const char *cmdline,
 	ptr = atag_end(ptr);
 }
 
+static unsigned char crc_check_buf[2048]; //Equal to max-supported pagesize
+int recovery_crc_check(unsigned long long ptn)
+{
+	int recovery_page_cnt;
+	int sum;
+	int *temp_int;
+	int page_size;
+
+	int err;
+	int cnt;
+	int pcnt;
+	int check_zero = 0;
+
+	struct boot_img_hdr *hdr = (void*)crc_check_buf;
+	memset(crc_check_buf, 0x00, 2048);
+
+	dprintf(INFO, "recovery_crc_check() start ptn [%d]\n", ptn);
+
+	err = tcc_read(ptn,(unsigned int*)crc_check_buf, sizeof(boot_img_hdr));
+	/*dprintf(INFO,"recovery_crc_check() buff check [%02X] [%02X] [%02X] [%02X] [%02X] [%02X]\n",
+	        buf[0], buf[1], buf[2], buf[3], buf[4], buf[5]);*/
+	recovery_page_cnt = ((hdr->kernel_size + hdr->page_size - 1) / hdr->page_size) +
+						((hdr->ramdisk_size + hdr->page_size - 1) / hdr->page_size) +
+						((hdr->second_size + hdr->page_size - 1) / hdr->page_size) + 1;
+	page_size = hdr->page_size;
+	dprintf(INFO, "recovery_crc_check() recovery_page_cnt [%d]\n", recovery_page_cnt);
+
+	if(0 > recovery_page_cnt) {
+		dprintf(INFO, "recovery_crc_check() invalid image header\n");
+		return -1;
+	}
+	else {
+		dprintf(INFO, "recovery_crc_check() pass header check\n");
+	}
+
+	sum = 0;
+
+	dprintf(INFO, "page_size=%d, page_cnt=%d\n", page_size, recovery_page_cnt);
+	for(cnt = 0; cnt < recovery_page_cnt; ++cnt) {
+		memset(crc_check_buf, 0, page_size);
+		//dprintf(INFO,"recovery_crc_check() offset [%d]\n", cnt * page_size);
+		err = tcc_read(ptn + (cnt * page_size), (unsigned int*)crc_check_buf, page_size);
+
+		for(pcnt = 0; pcnt < (page_size / 4); ++pcnt) {
+			temp_int = (int*)(crc_check_buf + (pcnt * 4));
+
+			// check recovery partition empty
+			if(*temp_int != 0)
+				check_zero = 1;
+
+			sum += *temp_int;
+			//dprintf(INFO, "pcnt[%d] sum [%d] sum [0x%08x]\n", pcnt, sum, sum);
+		}
+	}
+
+	dprintf(INFO, "recovery_crc_check() sum [%d] sum [0x%08x] check_zero [%d]\n", sum, sum, check_zero);
+
+	if(sum != 0)
+		return -1;
+
+	if(!check_zero)
+		return -1;
+
+	return 0;
+}
+
 typedef void entry_func_ptr(unsigned, unsigned, unsigned*);
 void boot_linux(void *kernel, unsigned *tags,
 				const char *cmdline, unsigned machtype,
@@ -503,7 +617,11 @@ void boot_linux(void *kernel, unsigned *tags,
 	void (*entry)(unsigned, unsigned, unsigned*) = (entry_func_ptr*)(PA((addr_t)kernel));
 	uint32_t tags_phys = PA((addr_t)tags);
 
+#if !defined(CONFIG_TCC_CODESONAR_BLOCKED)
+	ramdisk = PA((addr_t)ramdisk);
+#else
 	ramdisk = (void *)PA((addr_t)ramdisk);
+#endif
 
 	final_cmdline = update_cmdline((const char*)cmdline);
 
@@ -514,9 +632,7 @@ void boot_linux(void *kernel, unsigned *tags,
 	if(ret) {
 		fbprintf(CRITICAL, "Error: Updating Device Tree Failed\n");
 		keys_event_waiting();
-		return -1;
-
-		ASSERT(0);
+		return;
 	}
 #else
 	/* Generating the Atags */
@@ -559,14 +675,29 @@ int boot_linux_from_storage(void)
 
 	struct boot_img_hdr *hdr = (void*)buf;
 
+#if 0 /* !defined(CONFIG_TCC_CODESONAR_BLOCKED) */
+#if defined(TSBM_ENABLE)
+	if(boot_linux_secure(hdr))
+		return -1;
+#else /* TSBM_ENABLE */
+	if(boot_linux_none_secure(hdr))
+		return -1;
+#endif /* TSBM_ENABLE */
+
+#else /* !defined(CONFIG_TCC_CODESONAR_BLOCKED) */
+
+#if defined(TSBM_ENABLE)
 	if(target_use_signed_kernel()) {
 		if(boot_linux_secure(hdr))
 			return -1;
 	}
-	else {
+	else
+#endif /* defined(TSBM_ENABLE) */
+	{
 		if(boot_linux_none_secure(hdr))
 			return -1;
 	}
+#endif /* !defined(CONFIG_TCC_CODESONAR_BLOCKED) */
 
 
 unified_boot:
@@ -594,6 +725,7 @@ int boot_linux_secure(struct boot_img_hdr *hdr)
 	unsigned kernel_actual;
 	unsigned ramdisk_actual;
 	unsigned second_actual = 0;
+	int      err = 0;
 
 	if (!boot_into_recovery) {
 
@@ -616,6 +748,30 @@ int boot_linux_secure(struct boot_img_hdr *hdr)
 			fbprintf(CRITICAL, "ERROR: No recovery partition found\n");
 			keys_event_waiting();
 			return -1;
+		}
+		err = recovery_crc_check(ptn);
+		if(err < 0) {
+			dprintf(INFO, "boot_linux_secure() original ptn(%lld)\n", ptn);
+			dprintf(INFO, "boot_linux_secure() recovery crc check error!(1st)\n");
+			dprintf(INFO, "try to boot boot_linux_secure() recovery_mirror partition !!!!!!!\n");
+
+			index = partition_get_index("recovery_mirror");
+			ptn = partition_get_offset(index);
+			if(ptn == 0) {
+				fbprintf(CRITICAL, "ERROR: No recovery_mirror partition found\n");
+				keys_event_waiting();
+				return -1;
+			}
+			err = recovery_crc_check(ptn);
+			if(err < 0) {
+				dprintf(INFO, "boot_linux_secure() original ptn(%lld)\n", ptn);
+				dprintf(INFO, "boot_linux_secure() recovery crc check error!(2nd)\n");
+				dprintf(INFO, "Recovery Update failed\n", ptn);
+				dprintf(INFO, "Please contact Customer Care\n");
+
+				// infinity loop!!!!
+				while(1);
+			}
 		}
 	}
 
@@ -752,6 +908,7 @@ int boot_linux_none_secure(struct boot_img_hdr *hdr)
 	unsigned kernel_actual;
 	unsigned ramdisk_actual;
 	unsigned second_actual = 0;
+	int      err = 0;
 
 #if (_JTAG_BOOT)
 	update_ker_tags_rdisk_addr(hdr, 1);
@@ -779,17 +936,46 @@ int boot_linux_none_secure(struct boot_img_hdr *hdr)
 		}
 	}
 	else {
+
+		//2021.04.19 Enhancement of power handling when SW updating is in progress
+#if 0
 		if(boot_into_active_partition == 0) {
 			index = partition_get_index("recovery");
 		}
 		else {
 			index = partition_get_index("recovery_mirror");
 		}
+#endif
+		index = partition_get_index("recovery");
 		ptn = partition_get_offset(index);
 		if(ptn == 0) {
 			fbprintf(CRITICAL, "ERROR: No recovery partition found\n");
 			keys_event_waiting();
 			return -1;
+		}
+		err = recovery_crc_check(ptn);
+		if(err < 0) {
+			dprintf(INFO, "boot_linux_from_storage() original ptn(%lld)\n", ptn);
+			dprintf(INFO, "boot_linux_from_storage() recovery crc check error!(1st)\n");
+			dprintf(INFO, "try to boot boot_linux_from_storage() recovery_mirror partition !!!!!!!\n");
+
+			index = partition_get_index("recovery_mirror");
+			ptn = partition_get_offset(index);
+			if(ptn == 0) {
+				fbprintf(CRITICAL, "ERROR: No recovery_mirror partition found\n");
+				keys_event_waiting();
+				return -1;
+			}
+			err = recovery_crc_check(ptn);
+			if(err < 0) {
+				dprintf(INFO, "boot_linux_from_storage() original ptn(%lld)\n", ptn);
+				dprintf(INFO, "boot_linux_from_storage() recovery crc check error!(2nd)\n");
+				dprintf(INFO, "Recovery Update failed\n", ptn);
+				dprintf(INFO, "Please contact Customer Care\n");
+
+				// infinity loop!!!!
+				while(1);
+			}
 		}
 	}
 
@@ -1050,20 +1236,24 @@ void cmd_erase(const char *arg, void *data, unsigned sz)
 		return;
 	}
 
-	if(target_is_emmc_boot()) {
-
-		if (tcc_write("fastboot_erase", ptn, partition_get_size(index) >> 9, NULL)) {
+#if _EMMC_BOOT
+	//if(target_is_emmc_boot())
+	{
+		if (tcc_write("fastboot_erase", ptn, partition_get_size(index)>>9, NULL))
+		{
 			fastboot_fail("failed to erase partition");
 			return;
 		}
 	}
-	else {
+	//else
+#else /* _EMMC_BOOT */
+	{
 		if(flash_erase(arg)) {
 			fastboot_fail("failed to erase partition");
 			return ;
 		}
 	}
-
+#endif /* _EMMC_BOOT */
 
 	fastboot_okay("");
 }
@@ -1077,7 +1267,10 @@ void cmd_flash_img(const char *arg, void *data, unsigned sz)
 
 	if (!strcmp(arg, "partition")) {
 		dprintf(INFO, "Attempt to write partition image.\n");
-		if (write_partition(sz, (unsigned char *) data)) {
+#ifdef CONFIG_TCC_CODESONAR_BLOCKED
+		if (write_partition(sz, (unsigned char *) data))
+#endif
+		{
 			fastboot_fail("failed to write partition");
 			return;
 		}
@@ -1336,10 +1529,13 @@ static void get_partition_size(const char *arg, char *response)
 
 	index = partition_get_index(arg);
 
+#if !defined(CONFIG_TCC_CODESONAR_BLOCKED)
+#else
 	if (index == INVALID_PTN) {
 		dprintf(CRITICAL, "Invalid partition index\n");
 		return;
 	}
+#endif
 
 	ptn = partition_get_offset(index);
 
@@ -1398,6 +1594,9 @@ int serdes_i2c_4_ADD_read(int add, unsigned char cmd1, unsigned char cmd2, unsig
 	int count = 3;
 	unsigned char send_data[3];
 
+	if(add == 0x00)
+		return 0;
+
 	do {
 		send_data[0] = cmd1;
 		send_data[1] = cmd2;
@@ -1421,6 +1620,7 @@ int serdes_i2c_4_ADD_write(int add , unsigned char cmd1, unsigned char cmd2, uns
 {
 	int ret = -1;
 	int count = 3;
+	int i;
 
 	unsigned char send_data[3];
 	unsigned char read_data[2];
@@ -1428,6 +1628,14 @@ int serdes_i2c_4_ADD_write(int add , unsigned char cmd1, unsigned char cmd2, uns
 	send_data[0] = cmd1;
 	send_data[1] = cmd2;
 	send_data[2] = value;
+
+	if(add == 0x00)
+	{
+		for(i=0;i<value;i++)
+			udelay2(1000);
+		check_ret ++;
+		return 0;
+	}
 
 	do {
 		ret = i2c_xfer(add, 3, send_data, 0, 0, I2C_CH_MASTER1);
@@ -1519,35 +1727,46 @@ int serdes_i2c_write(int add , unsigned char cmd, unsigned char value)
 
 #define HDMI_SEP_MONITOR
 
+#if 1
 void hdmi_set_reg_1()
 {
 	int count, i;
 	int retry = 3;
+	unsigned char recv_data = NULL;
 
 	hdmi_config_3* reglist = hdmi_1920_720_10_25_config_1;
 
 	count = sizeof(hdmi_1920_720_10_25_config_1) / sizeof(hdmi_config_3);
 
-	dprintf(INFO, "%s: I2C 3BYTE CMD #%d\n", __func__, count + 1);
+	dprintf(INFO, "#10%s: I2C 3BYTE CMD #%d\n", __func__, count + 1);
 
 	do {
 		check_ret = 0;
 		/*10.25 HDMI Rx IC init Value*/
 		SERDES_I2C_WRITE(0x98, 0xFF, 0x80);
 
-		udelay(5000);
+		udelay2(10000);
 
-		for(i = 0 ; i < count ; i++)
+		for(i = 0 ; i < count ; i++) {
 			SERDES_I2C_WRITE(reglist[i].slave_addr, reglist[i].cmd, reglist[i].value);
-
+#if 1
+			serdes_i2c_read(reglist[i].slave_addr, reglist[i].cmd, &recv_data);
+			if(recv_data != reglist[i].value)
+			{
+				dprintf(INFO, "hdmi write fail, 0x%x 0x%x 0x%x 0x%x\n", reglist[i].slave_addr, reglist[i].cmd, reglist[i].value, recv_data);
+				dprintf(INFO, "force zero set to check_ret value\n");
+				check_ret=0;
+			}
+#endif
+		}
 		dprintf(INFO, "%s check_ret = %d\n", __func__, check_ret);
 		retry --;
 
 	}
 	while((count + 1) != (check_ret) && retry > 0);
-
 	return ;
 }
+#endif
 
 void hdmi_set_reg_2_OE()
 {
@@ -1602,37 +1821,110 @@ void hdmi_set_reg_2_PIO()
 	return ;
 }
 
-void seperated_serdes_reg_12_3()
+void serdes_reg(hdmi_config_4* reglist, int size)
 {
-	int count, i;
-	int retry = 3;
+        int count, i;
+        int retry = 1;
 
-	hdmi_config_3* reglist = serdes_1920_720_12_3_config;
+        count = size / sizeof(hdmi_config_4);
 
-	count = sizeof(serdes_1920_720_12_3_config) / sizeof(hdmi_config_3);
+        dprintf(INFO, "%s: I2C 4BYTE CMD #%d\n", __func__, count);
 
-	dprintf(INFO, "%s: I2C 3BYTE CMD #%d\n", __func__, count);
+        do {
+                check_ret = 0;
 
-	do {
-		check_ret = 0;
+                for(i = 0 ; i < count ; i++)
+                        SERDES_I2C_4_ADD_WRITE(reglist[i].slave_addr, reglist[i].cmd1, reglist[i].cmd2, reglist[i].value);
 
-		for(i = 0 ; i < count ; i++)
-			SERDES_I2C_WRITE(reglist[i].slave_addr, reglist[i].cmd, reglist[i].value);
+                unsigned char ret = 0;
 
-		dprintf(INFO, "%s check_ret = %d\n", __func__, check_ret);
-		retry --;
+                for(i = 0 ; i < count ; i++) {
+                        SERDES_I2C_4_ADD_READ(reglist[i].slave_addr, reglist[i].cmd1, reglist[i].cmd2, &ret);
+                        dprintf(INFO, "%s: I2C 4BYTE READ - 0x%02x 0x%02x 0x%02x 0x%02x\n", __func__, reglist[i].slave_addr, reglist[i].cmd1, reglist[i].cmd2, ret);
+                }
 
-	}
-	while(count != (check_ret) && retry > 0);
+                dprintf(INFO, "%s check_ret = %d\n", __func__, check_ret);
+                retry --;
+        }
+        while(count != check_ret && retry > 0);
 
-	return ;
+        return ;
+}
+
+void seperated_serdes_reg_8_0()
+{
+        int count, i;
+        int retry = 1;
+
+        hdmi_config_4* reglist = serdes_1280_720_8_0_config;
+
+        count = sizeof(serdes_1280_720_8_0_config) / sizeof(hdmi_config_4);
+
+        dprintf(INFO, "%s: I2C 4BYTE CMD #%d\n", __func__, count);
+
+        do {
+                check_ret = 0;
+
+                for(i = 0 ; i < count ; i++)
+                        SERDES_I2C_4_ADD_WRITE(reglist[i].slave_addr, reglist[i].cmd1, reglist[i].cmd2, reglist[i].value);
+
+                unsigned char ret = 0;
+
+                for(i = 0 ; i < count ; i++) {
+                        SERDES_I2C_4_ADD_READ(reglist[i].slave_addr, reglist[i].cmd1, reglist[i].cmd2, &ret);
+                        dprintf(INFO, "%s: I2C 4BYTE READ - 0x%02x 0x%02x 0x%02x 0x%02x\n", __func__, reglist[i].slave_addr, reglist[i].cmd1, reglist[i].cmd2, ret);
+                }
+
+                dprintf(INFO, "%s check_ret = %d\n", __func__, check_ret);
+                retry --;
+        }
+        while(count != check_ret && retry > 0);
+
+        return ;
 
 }
 
+void seperated_serdes_reg_12_3(int serdes_connect)
+{
+        int count, i;
+        int retry = 1;
+
+        hdmi_config_4* reglist = serdes_1920_720_12_3_config;
+
+        count = sizeof(serdes_1920_720_12_3_config) / sizeof(hdmi_config_4);
+
+        dprintf(INFO, "%s: I2C 4BYTE CMD #%d\n", __func__, count);
+
+        do {
+                check_ret = 0;
+
+                for(i = 0 ; i < count ; i++)
+		{
+			if(!(!serdes_connect&&reglist[i].slave_addr==0x90))
+	                        SERDES_I2C_4_ADD_WRITE(reglist[i].slave_addr, reglist[i].cmd1, reglist[i].cmd2, reglist[i].value);
+		}
+                unsigned char ret = 0;
+
+                for(i = 0 ; i < count ; i++) {
+			if(!(!serdes_connect&&reglist[i].slave_addr==0x90))
+			{
+	                        SERDES_I2C_4_ADD_READ(reglist[i].slave_addr, reglist[i].cmd1, reglist[i].cmd2, &ret);
+        	                dprintf(INFO, "%s: I2C 4BYTE READ - 0x%02x 0x%02x 0x%02x 0x%02x\n", __func__, reglist[i].slave_addr, reglist[i].cmd1, reglist[i].cmd2, ret);
+			}
+                }
+
+                dprintf(INFO, "%s check_ret = %d\n", __func__, check_ret);
+                retry --;
+        }
+        while(count != check_ret && retry > 0);
+
+        return ;
+
+}
 void seperated_serdes_reg_10_25()
 {
 	int count, i;
-	int retry = 3;
+	int retry = 1;
 
 	hdmi_config_4* reglist = serdes_1920_720_10_25_config;
 
@@ -1662,6 +1954,333 @@ void seperated_serdes_reg_10_25()
 
 }
 
+void seperated_serdes_reg_10_25_ltps(int serdes_connect)
+{
+        int count, i;
+        int retry = 1;
+
+        hdmi_config_4* reglist = serdes_1920_720_10_25_ltps_config;
+
+        count = sizeof(serdes_1920_720_10_25_ltps_config) / sizeof(hdmi_config_4);
+
+        dprintf(INFO, "%s: I2C 4BYTE CMD #%d\n", __func__, count);
+
+        do {
+                check_ret = 0;
+
+                for(i = 0 ; i < count ; i++)
+		{
+			if(!(!serdes_connect&&reglist[i].slave_addr==0x90))
+	                        SERDES_I2C_4_ADD_WRITE(reglist[i].slave_addr, reglist[i].cmd1, reglist[i].cmd2, reglist[i].value);
+		}
+                unsigned char ret = 0;
+
+                for(i = 0 ; i < count ; i++) {
+			if(!(!serdes_connect&&reglist[i].slave_addr==0x90))
+			{
+	                        SERDES_I2C_4_ADD_READ(reglist[i].slave_addr, reglist[i].cmd1, reglist[i].cmd2, &ret);
+        	                dprintf(INFO, "%s: I2C 4BYTE READ - 0x%02x 0x%02x 0x%02x 0x%02x\n", __func__, reglist[i].slave_addr, reglist[i].cmd1, reglist[i].cmd2, ret);
+			}
+                }
+
+                dprintf(INFO, "%s check_ret = %d\n", __func__, check_ret);
+                retry --;
+        }
+        while(count != check_ret && retry > 0);
+
+        return ;
+
+}
+
+void ser_reg_3gbps()
+{
+        int count, i;
+        int retry = 1;
+
+        hdmi_config_4* reglist = serdes_3gbps_config;
+
+        count = sizeof(serdes_3gbps_config) / sizeof(hdmi_config_4);
+
+        dprintf(INFO, "%s: I2C 4BYTE CMD #%d\n", __func__, count);
+
+                check_ret = 0;
+
+                for(i = 0 ; i < count ; i++)
+                        if(reglist[i].slave_addr == 0x80)
+                                SERDES_I2C_4_ADD_WRITE(reglist[i].slave_addr, reglist[i].cmd1, reglist[i].cmd2, reglist[i].value);
+
+                dprintf(INFO, "%s check_ret = %d\n", __func__, check_ret);
+
+        return ;
+}
+
+void des_reg_3gbps()
+{
+        int count, i;
+        int retry = 1;
+
+        hdmi_config_4* reglist = serdes_3gbps_config;
+
+        count = sizeof(serdes_3gbps_config) / sizeof(hdmi_config_4);
+
+        dprintf(INFO, "%s: I2C 4BYTE CMD #%d\n", __func__, count);
+
+                check_ret = 0;
+
+                for(i = 0 ; i < count ; i++)
+                        if(reglist[i].slave_addr == 0x90)
+                                SERDES_I2C_4_ADD_WRITE(reglist[i].slave_addr, reglist[i].cmd1, reglist[i].cmd2, reglist[i].value);
+
+                dprintf(INFO, "%s check_ret = %d\n", __func__, check_ret);
+
+        return ;
+}
+
+void serdes_reg_3gbps()
+{
+        int count, i;
+        int retry = 1;
+
+        hdmi_config_4* reglist = serdes_3gbps_config;
+
+        count = sizeof(serdes_3gbps_config) / sizeof(hdmi_config_4);
+
+        dprintf(INFO, "%s: I2C 4BYTE CMD #%d\n", __func__, count);
+
+        do {
+                check_ret = 0;
+
+                for(i = 0 ; i < count ; i++)
+                        SERDES_I2C_4_ADD_WRITE(reglist[i].slave_addr, reglist[i].cmd1, reglist[i].cmd2, reglist[i].value);
+
+                dprintf(INFO, "%s check_ret = %d\n", __func__, check_ret);
+                retry --;
+        }
+        while(count != check_ret && retry > 0);
+
+        return ;
+}
+
+void serdes_reg_6gbps()
+{
+        int count, i;
+        int retry = 1;
+
+        hdmi_config_4* reglist = serdes_6gbps_config;
+
+        count = sizeof(serdes_6gbps_config) / sizeof(hdmi_config_4);
+
+        dprintf(INFO, "%s: I2C 4BYTE CMD #%d\n", __func__, count);
+
+        do {
+                check_ret = 0;
+
+                for(i = 0 ; i < count ; i++)
+                        SERDES_I2C_4_ADD_WRITE(reglist[i].slave_addr, reglist[i].cmd1, reglist[i].cmd2, reglist[i].value);
+
+                dprintf(INFO, "%s check_ret = %d\n", __func__, check_ret);
+                retry --;
+        }
+        while(count != check_ret && retry > 0);
+
+        return ;
+}
+
+int serdes_connect_check()
+{
+        int count;
+        int i = 0;
+        int ret = 0;
+
+        hdmi_config_4* reglist = serdes_link_lock_config;
+
+        count = sizeof(serdes_link_lock_config) / sizeof(hdmi_config_4);
+
+        dprintf(INFO, "%s: I2C 4BYTE CMD #%d\n", __func__, count);
+
+        SERDES_I2C_4_ADD_READ(reglist[i].slave_addr, reglist[i].cmd1, reglist[i].cmd2, &ret);
+        dprintf(INFO, "%s: I2C 4BYTE READ - 0x%02x 0x%02x 0x%02x 0x%02x\n", __func__, reglist[i].slave_addr, reglist[i].cmd1, reglist[i].cmd2, ret);
+
+        if((ret & 0xfa) == 0xda)
+                return 1;
+        else
+                return 0;
+}
+
+int serdes_line_fault_check()
+{
+        int count;
+        int i = 0;
+        int ret = 0;
+        int check_ret = 0;
+
+        hdmi_config_4* reglist = serdes_line_fault_config;
+
+        count = sizeof(serdes_line_fault_config) / sizeof(hdmi_config_4);
+
+        dprintf(INFO, "%s: I2C 4BYTE CMD #%d\n", __func__, count);
+
+        SERDES_I2C_4_ADD_WRITE(reglist[i].slave_addr, reglist[i].cmd1, reglist[i].cmd2, reglist[i].value);
+
+	udelay2(20000);
+
+        SERDES_I2C_4_ADD_READ(reglist[i].slave_addr, reglist[i].cmd1, reglist[i].cmd2, &ret);
+        dprintf(INFO, "%s: I2C 4BYTE READ - 0x%02x 0x%02x 0x%02x 0x%02x -> 0x%02x\n", __func__, reglist[i].slave_addr, reglist[i].cmd1, reglist[i].cmd2, ret, ret & 0x0C);
+
+        if((ret & 0x0C) == 0x08)
+                check_ret = 1;
+        else
+                check_ret = 0;
+
+        i++;
+
+        SERDES_I2C_4_ADD_WRITE(reglist[i].slave_addr, reglist[i].cmd1, reglist[i].cmd2, reglist[i].value);
+/*
+        i++;
+
+        SERDES_I2C_4_ADD_WRITE(reglist[i].slave_addr, reglist[i].cmd1, reglist[i].cmd2, reglist[i].value);
+        SERDES_I2C_4_ADD_READ(reglist[i].slave_addr, reglist[i].cmd1, reglist[i].cmd2, &ret);
+*/
+        return check_ret;
+}
+
+void serdes_reg_bitrate_check()
+{
+	int count, i;
+        int retry = 1;
+	int ret;
+
+        hdmi_config_4* reglist = serdes_bitrate_config;
+
+        count = sizeof(serdes_bitrate_config) / sizeof(hdmi_config_4);
+
+        dprintf(INFO, "%s: I2C 4BYTE CMD #%d\n", __func__, count);
+
+	for(i = 0 ; i < count ; i++)
+	{
+		SERDES_I2C_4_ADD_READ(reglist[i].slave_addr, reglist[i].cmd1, reglist[i].cmd2, &ret);
+                dprintf(INFO, "%s: I2C 4BYTE READ - 0x%02x 0x%02x 0x%02x 0x%02x\n", __func__, reglist[i].slave_addr, reglist[i].cmd1, reglist[i].cmd2, ret);
+	}
+        return ;
+}
+
+void serdes_reg_12_3_touch(int serdes_connect)
+{
+        int count, i;
+        int retry = 1;
+
+        hdmi_config_4* reglist = serdes_1920_720_12_3_touch_config;
+
+        count = sizeof(serdes_1920_720_12_3_touch_config) / sizeof(hdmi_config_4);
+
+        dprintf(INFO, "%s: I2C 4BYTE CMD #%d\n", __func__, count);
+
+        do {
+                check_ret = 0;
+
+                for(i = 0 ; i < count ; i++)
+		{
+			if(!(!serdes_connect&&reglist[i].slave_addr==0x90))
+			{
+	                        SERDES_I2C_4_ADD_WRITE(reglist[i].slave_addr, reglist[i].cmd1, reglist[i].cmd2, reglist[i].value);
+			}
+		}
+                unsigned char ret = 0;
+
+                for(i = 0 ; i < count ; i++) {
+			if(!(!serdes_connect&&reglist[i].slave_addr==0x90))
+			{
+                        	SERDES_I2C_4_ADD_READ(reglist[i].slave_addr, reglist[i].cmd1, reglist[i].cmd2, &ret);
+	                        dprintf(INFO, "%s: I2C 4BYTE READ - 0x%02x 0x%02x 0x%02x 0x%02x\n", __func__, reglist[i].slave_addr, reglist[i].cmd1, reglist[i].cmd2, ret);
+			}
+                }
+
+                dprintf(INFO, "%s check_ret = %d\n", __func__, check_ret);
+                retry --;
+        }
+        while(count != check_ret && retry > 0);
+
+        return ;
+}
+
+void serdes_reg_10_25_ltps_touch(int serdes_connect)
+{
+        int count, i;
+        int retry = 1;
+
+	int count_retry;
+
+        hdmi_config_4* reglist = serdes_1920_720_10_25_ltps_touch_config;
+
+        count = sizeof(serdes_1920_720_10_25_ltps_touch_config) / sizeof(hdmi_config_4);
+
+        dprintf(INFO, "%s: I2C 4BYTE CMD #%d\n", __func__, count);
+
+        do {
+                check_ret = 0;
+
+                for(i = 0 ; i < count ; i++)
+		{
+			if(serdes_connect&&reglist[i].value == 0xFF)
+			{
+				count_retry = 20;
+                                while(count_retry > 1)
+                                {
+
+                                        unsigned char ret = 0;
+                                        SERDES_I2C_4_ADD_READ(reglist[i].slave_addr, reglist[i].cmd1, reglist[i].cmd2, &ret);
+                                        dprintf(INFO, "%s: I2C 4BYTE READ - 0x%02x 0x%02x 0x%02x 0x%02x\n", __func__, reglist[i].slave_addr, reglist[i].cmd1, reglist[i].cmd2, ret);
+                                        dprintf(INFO,"0x%x = 0x%x\n",reglist[i].cmd1, ret);
+                                        if(reglist[i].cmd1)
+                                        {
+                                                if((ret&0x40))
+                                                {
+                                                        dprintf(INFO,"break\n");
+							check_ret++;
+                                                        break;
+                                                }
+                                        }
+                                        else
+                                        {
+                                                if((ret&0x01))
+                                                {
+                                                        dprintf(INFO,"break\n");
+							check_ret++;
+                                                        break;
+                                                }
+                                        }
+                                        count_retry--;
+
+					udelay2(2000);
+                                }
+                        }
+                        else
+			{
+				if(!(!serdes_connect&&reglist[i].slave_addr==0x90))
+				{
+	                                SERDES_I2C_4_ADD_WRITE(reglist[i].slave_addr, reglist[i].cmd1, reglist[i].cmd2, reglist[i].value);
+				}
+			}
+                }
+                unsigned char ret = 0;
+
+                for(i = 0 ; i < count ; i++) {
+			if(!(!serdes_connect&&reglist[i].slave_addr==0x90))
+			{
+	                        SERDES_I2C_4_ADD_READ(reglist[i].slave_addr, reglist[i].cmd1, reglist[i].cmd2, &ret);
+        	                dprintf(INFO, "%s: I2C 4BYTE READ - 0x%02x 0x%02x 0x%02x 0x%02x\n", __func__, reglist[i].slave_addr, reglist[i].cmd1, reglist[i].cmd2, ret);
+			}
+                }
+
+                dprintf(INFO, "%s check_ret = %d\n", __func__, check_ret);
+                retry --;
+        }
+        while(count != check_ret && retry > 0);
+
+        return ;
+}
+
+
 
 void aboot_init(const struct app_descriptor *app)
 {
@@ -1669,17 +2288,23 @@ void aboot_init(const struct app_descriptor *app)
 	unsigned reboot_mode = 0;
 	unsigned usb_init = 0;
 	unsigned sz = 0;
-	unsigned char c = 0;
+	/* unsigned */ char c = 0;
+	unsigned char lcd_ver = get_daudio_lcd_ver();
 
+#if _EMMC_BOOT
 	/* Setup page size information for nand/emmc reads */
-	if (target_is_emmc_boot()) {
+	//if (target_is_emmc_boot()) {
+	{
 		page_size = 2048;
 		page_mask = page_size - 1;
 	}
-	else {
+	//else
+#else /* _EMMC_BOOT */
+	{
 		page_size = flash_page_size();
 		page_mask = page_size - 1;
 	}
+#endif /* _EMMC_BOOT */
 
 	if (check_fwdn_mode()) {
 		fwdn_start();
@@ -1687,9 +2312,11 @@ void aboot_init(const struct app_descriptor *app)
 		dprintf(INFO, "TCC_GPC(29) HIGH\n");
 	}
 
+#if defined(TSBM_ENABLE)
 	if(target_use_signed_kernel()) {
 		read_device_info(&device);
 	}
+#endif /* defined(TSBM_ENABLE) */
 
 	target_serialno((unsigned char *) sn_buf);
 	dprintf(SPEW, "serial number: %s\n", sn_buf);
@@ -1697,13 +2324,14 @@ void aboot_init(const struct app_descriptor *app)
 
 	{
 		unsigned int loop = 0;
-		unsigned int value_1 = 0, value_2 = 0, value = 0;
+		unsigned int value_1 = 0, value_2 = 0, value_3 = 0, value = 0;
 		unsigned int mode_value[3];
 
 		for(loop = 0 ; loop < 3 ; loop++) {
 			value_1 = gpio_get( GPIO_PORTB | 19 );
 			value_2 = gpio_get( GPIO_PORTB | 23 );
-			value = ((value_1 << 1) | value_2);
+            value_3 = gpio_get( GPIO_PORTB | 22 );
+			value = ((value_3 << 2) | (value_1 << 1) | value_2);
 			mode_value[loop] = value;
 
 			mdelay(10);
@@ -1717,23 +2345,28 @@ void aboot_init(const struct app_descriptor *app)
 				*   @issue:When enter the force update mode, VBUS is 0V. So, it is not working. It is to tell Micom to know second BOOT_OK pin high. Then Micom will VBUS as high
 				*
 				*/
-				gpio_set(TCC_GPC(29), 0);
+				target_control_vbus(0);
 				mdelay(500);
-				gpio_set(TCC_GPC(29), 1);
+				target_control_vbus(1);
 				mdelay(500);
-				gpio_set(TCC_GPC(29), 0);
+				target_control_vbus(0);
 				mdelay(500);
-				gpio_set(TCC_GPC(29), 1);
+				target_control_vbus(1);
 
 				boot_uboot();
 			}
 		}
 
-		dprintf(INFO, "###### TCC GPIOB-19,23 (%d)-(%d)  #######\n", gpio_get(TCC_GPB(19)) , gpio_get(TCC_GPB(23)) );
+		dprintf(INFO, "###### TCC GPIOB-22,19,23 (%d)-(%d)-(%d)  #######\n", gpio_get(TCC_GPB(22)) , gpio_get(TCC_GPB(19)), gpio_get(TCC_GPB(23)) );
 	}
 
-	if(getc(&c) >= 0) {
-		dprintf(CRITICAL, "getc: %c\n", c);
+#if !defined(CONFIG_TCC_CODESONAR_BLOCKED)
+	if(dgetc(&c,true) >= 0)
+#else
+	if(getc(&c) >= 0)
+#endif
+	{
+		dprintf(CRITICAL,"getc: %c\n", c);
 
 		if (c == 'r')
 			boot_into_recovery = 1;
@@ -1798,18 +2431,24 @@ void aboot_init(const struct app_descriptor *app)
 	reboot_mode = check_reboot_mode();
 	printf("reboot_mode(0x%08X)\n", reboot_mode);
 	if (reboot_mode == RECOVERY_MODE) {
-		printf("reboot_mode == RECOVERY_MODE\n");
-		boot_into_recovery = 1;
+		if (skip_loading_quickboot == 1)
+			printf("enginner force normal boot mode, skip_loading_quickboot=%d\n", skip_loading_quickboot);
+		else
+		{
+			printf("reboot_mode == RECOVERY_MODE\n");
+			boot_into_recovery = 1;
+		}
 	}
 	else if(reboot_mode == FASTBOOT_MODE) {
 		printf("reboot_mode == FASTBOOT_MODE\n");
 		goto fastboot;
 //+[TCCQB] For QuickBoot Booting Option
 	}
-	else if(reboot_mode == FORCE_NORMAL_MODE) {   /* skip quickboot mode */
+	else if(reboot_mode == FORCE_NORMAL_MODE || reboot_mode == PANIC_BOOT_MODE) {   /* skip quickboot mode */
 		skip_loading_quickboot = 1;
 		printf("reboot_mode == FORCE_NORMAL_MODE\n");
 	}
+
 	boot_into_active_partition = check_active_partition();
 	dprintf(INFO, "boot_into_active_partition = %s\n", boot_into_active_partition ? "boot_mirror" : "boot");
 
@@ -1831,14 +2470,13 @@ void aboot_init(const struct app_descriptor *app)
 		*	@issue:When enter the force update mode, VBUS is 0V. So, it is not working. It is to tell Micom to know second BOOT_OK pin high. Then Micom will VBUS as high
 		*
 		*/
-		gpio_set(TCC_GPC(29), 0);
+		target_control_vbus(0);
 		mdelay(500);
-		gpio_set(TCC_GPC(29), 1);
+		target_control_vbus(1);
 		mdelay(500);
-		gpio_set(TCC_GPC(29), 0);
+		target_control_vbus(0);
 		mdelay(500);
-		gpio_set(TCC_GPC(29), 1);
-
+		target_control_vbus(1);
 
 		boot_uboot();
 	}
@@ -1859,9 +2497,14 @@ void aboot_init(const struct app_descriptor *app)
 
 #endif
 
-//MELFAS TOUCH Enable High
+	//MELFAS TOUCH Enable High
 	gpio_set(TCC_GPF(18), 1);
 	dprintf(INFO, "Melfas Touch Enable High\n");
+
+#if WITH_DEBUG_LOG_BUF
+	send_uart_to_kernel();
+#endif
+
 	if(recovery_init())
 		dprintf(ALWAYS, "error in recovery_init\n");
 //+[TCCQB] To Call QuickBoot Image Loading Function.
@@ -1879,7 +2522,6 @@ void aboot_init(const struct app_descriptor *app)
 #endif
 //-[TCCQB]
 //
-
 	boot_linux_from_storage();
 
 	fbprintf(CRITICAL, "ERROR: Could not do normal boot. Reverting "
@@ -1888,8 +2530,8 @@ void aboot_init(const struct app_descriptor *app)
 fastboot:
 	//to Micom high -> low (chage usb mode(host->device)
 	mdelay(100);
-	gpio_set(TCC_GPC(29), 0);
-	dprintf(INFO, "GPIO_BOOT_OK[TCC_GPC(29)] low for fastboot mode!\n");
+	target_control_vbus(0);
+	dprintf(INFO, "set vbus low for fastboot mode!\n");
 
 	sz = target_get_max_flash_size();
 

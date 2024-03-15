@@ -43,7 +43,14 @@ CONFIGHEADER := $(BUILDDIR)/config.h
 INCLUDES := -I$(BUILDDIR) -Iinclude
 CFLAGS := -O2 -g -fno-short-enums -fno-builtin -finline -W -Wall -Wno-multichar -Wno-unused-parameter -Wno-type-limits -Wno-unused-but-set-variable -Wno-unused-function -include $(CONFIGHEADER)
 CFLAGS += -DBOARD=\"$(PROJECT)\"
-CFLAGS += -D__uboot_file_path__=\"u-boot/u-boot.rom\"
+
+#buffalo+
+ifdef INCLUDE_LCD_HDMI_1920x720_12_3
+CFLAGS += -D__uboot_file_path__=\"u-boot/u-boot_1920x720.rom\"
+else
+CFLAGS += -D__uboot_file_path__=\"u-boot/u-boot_1280x720.rom\"
+endif
+
 #CFLAGS += -Werror
 ifeq ($(EMMC_BOOT),1)
   CFLAGS += -D_EMMC_BOOT=1
@@ -201,10 +208,6 @@ $(CONFIGHEADER): configheader
 
 ifeq ($(filter $(MAKECMDGOALS), clean), )
 -include $(DEPS)
-endif
-
-ifeq ($(shell echo $(INCLUDE_MAX_SER_DES)), true)
-KBUILD_CFLAGS += -DINCLUDE_MAX_SER_DES
 endif
 
 .PHONY: configheader

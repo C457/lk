@@ -11,7 +11,11 @@ extern unsigned read_partition_err;
 #endif
 void emmc_boot_main()
 {
+#if !defined(CONFIG_TCC_CODESONAR_BLOCKED)
+	unsigned int err = 0;
+#else
 	int err=0;
+#endif
 	ioctl_diskinfo_t disk_info;
 
 	dprintf(INFO , "%s:init start from eMMC\n" , __func__ );
@@ -25,6 +29,11 @@ void emmc_boot_main()
 		dprintf(CRITICAL, "%s: failed to read mbr err(%d)\n", __func__, err);
 		partition_dump();
 		read_partition_err = 1;
+	}
+#else	/* !defined(CONFIG_TCC_CODESONAR_BLOCKED) */
+	if (err)
+	{
+		printf("%s: failed to read mbr err(%d)\n", __func__, err);
 	}
 #endif
 	partition_dump();
@@ -50,6 +59,46 @@ unsigned int emmc_boot_write(unsigned int data_len, unsigned int* data)
 unsigned int emmc_write(char* write_target, unsigned long long data_addr, unsigned int data_len, void* in)
 {
 	int val = 0;
+#if !defined(CONFIG_TCC_CODESONAR_BLOCKED)
+	unsigned int pageCount = 0;
+
+	if (write_target == NULL)
+	{
+		goto bootsd;
+	}
+
+	if (!strcmp(write_target, "bootloader"))
+	{
+#if 0 /* defined(TSBM_ENABLE) */
+		val = mmc_update_secure_bootloader( data_len, 0 );
+		if ( val != -1 )
+			val = mmc_update_secure_bootloader( data_len, 1 );
+#else
+		val = mmc_update_bootloader( data_len, 0 );
+		if ( val != -1 )
+			val = mmc_update_bootloader( data_len, 1 );
+#endif
+	}
+	else if (!strcmp(write_target, "fastboot_erase"))
+	{
+		unsigned long erase_start_addr = (unsigned long)data_addr;
+		printf("[fastboot_erase] erase_start_addr : %ld, data_len : %d\n", erase_start_addr, data_len);
+		return erase_emmc(erase_start_addr, data_len, 0);
+	}
+	else
+	{
+bootsd:
+		pageCount = (data_len + 511) / 512;
+		if(pageCount)
+			val = BOOTSD_Write(SD_BUS_GetBootSlotIndex(), data_addr, pageCount, in);
+	}
+	if (val < 0)
+		return 1;
+	else
+		return 0;
+
+#else /* !defined(CONFIG_TCC_CODESONAR_BLOCKED) */
+
   if (!strcmp(write_target, "bootloader")) {
     	val = mmc_update_bootloader( data_len, 0 );
     	val = mmc_update_bootloader( data_len, 1 );
@@ -65,6 +114,7 @@ unsigned int emmc_write(char* write_target, unsigned long long data_addr, unsign
 		val = BOOTSD_Write(SD_BUS_GetBootSlotIndex(), data_addr, pageCount, in);
   }
 	return val;
+#endif /* !defined(CONFIG_TCC_CODESONAR_BLOCKED) */
 }
 
 unsigned int emmc_read(unsigned long long data_addr , unsigned data_len , void* in)
@@ -77,7 +127,14 @@ unsigned int emmc_read(unsigned long long data_addr , unsigned data_len , void* 
 	if(pageCount)
 		val = BOOTSD_Read(SD_BUS_GetBootSlotIndex(), data_addr, pageCount, in);
 
+#if !defined(CONFIG_TCC_CODESONAR_BLOCKED)
+	if (val < 0)
+		return 1;
+	else
+		return 0;
+#else
 	return val;
+#endif
 }
 
 int get_emmc_serial(char* Serial)

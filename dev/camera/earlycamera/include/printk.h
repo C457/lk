@@ -24,6 +24,10 @@
 #define __PRINTK_H__
 
 int printk(const char * fmt, ...);
+int printm(const char *fmt, ...);
+
+unsigned int get_log_length(void);
+unsigned int set_log_mem_info(unsigned int addr);
 
 #endif
 

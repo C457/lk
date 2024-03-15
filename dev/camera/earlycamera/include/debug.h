@@ -37,7 +37,7 @@
 
 #define TAG 	"CM"
 #define dprintf(level, x...)	do { if ((level) <= DEBUGLEVEL) { printk(x); } } while (0)
-#define log(x...)		do { if (INFO    <= DEBUGLEVEL) { printk("%s::%s() - ", TAG, __func__); printk(x); } } while (0)
+#define log(fmt, args...)		do { if (INFO    <= DEBUGLEVEL) { printk("%s::%s() - " fmt, TAG, __func__, ## args); } } while (0)
 #define FUNCTION_IN		log("IN\n");
 #define FUNCTION_OUT		log("OUT\n");
 

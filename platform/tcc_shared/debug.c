@@ -30,29 +30,86 @@
  * SUCH DAMAGE.
  */
 
+#include <stdlib.h>
 #include <debug.h>
 #include <printf.h>
 #include <arch/arm/dcc.h>
 #include <dev/fbcon.h>
 #include <dev/uart.h>
+#include <platform/gpio.h>
+
+#if WITH_DEBUG_LOG_BUF
+#include <platform/iomap.h>
+
+#define UART_LOG_BUF_SIZE (31*1024) /* align on 31k */
+bool freed = false;
+
+#define LK_LOG_COOKIE    0x474f4c52 /* "RLOG" in ASCII */
+
+
+struct lk_log {
+	struct lk_log_header {
+		unsigned cookie;
+		unsigned max_size;
+		unsigned size_written;
+		unsigned idx;
+	} header;
+	char data[UART_LOG_BUF_SIZE];
+};
+
+static struct lk_log log = {
+	.header = {
+		.cookie = LK_LOG_COOKIE,
+		.max_size = sizeof(log.data),
+		.size_written = 0,
+		.idx = 0,
+	},
+	.data = {0}
+};
+
+static void log_putc(char c)
+{
+	log.data[log.header.idx++] = c;
+	log.header.size_written++;
+	if (unlikely(log.header.idx >= log.header.max_size-1))
+		log.header.idx = 0;
+}
+
+void send_uart_to_kernel() {
+	//char cnt_buf[6] = { 0, };
+	//snprintf((char *)cnt_buf, sizeof(cnt_buf), "%d", log.header.idx);
+	//memcpy((void*)ABOOT_FORCE_UART_ADDR, (char*)log.data, sizeof(log.data));
+	//memcpy((void*)ABOOT_FORCE_UART_COUNT_ADDR, cnt_buf, sizeof(cnt_buf));
+	memcpy((void*)ABOOT_FORCE_UART_ADDR, (void*)&log, sizeof(log));
+	freed = true;
+}
+
+#endif /* WITH_DEBUG_LOG_BUF */
 
 void _dputc(char c)
 {
+#if WITH_DEBUG_LOG_BUF
+	log_putc(c);
+#endif
+
+	if(gpio_get( GPIO_PORTC|22) || mem_test_mode)
+	{
 #if WITH_DEBUG_DCC
-	if (c == '\n') {
-		while (dcc_putc('\r') < 0) ;
-	}
-	while (dcc_putc(c) < 0) ;
+		if (c == '\n') {
+			while (dcc_putc('\r') < 0) ;
+		}
+		while (dcc_putc(c) < 0) ;
 #endif
 #if WITH_DEBUG_UART
-	uart_putc(0, c);
+		uart_putc(0, c);
 #endif
 #if WITH_DEBUG_FBCON && WITH_DEV_FBCON
-	fbcon_putc(c);
+		fbcon_putc(c);
 #endif
 #if WITH_DEBUG_JTAG
-	jtag_dputc(c);
+		jtag_dputc(c);
 #endif
+	}
 }
 
 void _fbputc(char c)

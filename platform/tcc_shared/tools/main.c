@@ -107,7 +107,12 @@ static BOOL copy_file(FILE *s, FILE *d)
     if (s && d) {
         unsigned char buf[8192];
         size_t read_size = 0;
+#if !defined(CONFIG_TCC_CODESONAR_BLOCKED)
+		long len = 0, remainder = 0;
+		int i;
+#else
 		unsigned int len = 0, remainder = 0, i;
+#endif
 
         do {
             read_size = fread(buf, 1, 8192, s);
@@ -126,7 +131,11 @@ static BOOL copy_file(FILE *s, FILE *d)
 		remainder = len % 4;
 		if (remainder) {
 			for (i = 0; i < (4 - remainder); i++) {
+#if !defined(CONFIG_TCC_CODESONAR_BLOCKED)
+				(void)fputc(0x0, d);
+#else
 				fputc(0x0, d);
+#endif
 			}
 		}
     }
@@ -140,7 +149,10 @@ static BOOL tcc_crc_check(tcc_input_info_x *p_input_info)
         char *src_name = p_input_info->src_name;
         char *dest_name = p_input_info->dest_name;
         if (src_name && dest_name) {
-            if (!exist_file(dest_name)) {
+#ifdef CONFIG_TCC_CODESONAR_BLOCKED
+            if (!exist_file(dest_name))
+#endif // exist_file() is returned always false.
+            {
                 FILE *src_fd = NULL, *dest_fd = NULL;
                 src_fd = fopen(src_name, "rb");
                 dest_fd = fopen(dest_name, "w+b");
@@ -154,9 +166,12 @@ static BOOL tcc_crc_check(tcc_input_info_x *p_input_info)
                 }
                 CLOSE_HANDLE(src_fd, NULL, fclose);
                 CLOSE_HANDLE(dest_fd, NULL, fclose);
-            } else {
+            }
+#ifdef CONFIG_TCC_CODESONAR_BLOCKED
+            else {
                 printf("(%s) file exist!!!\n", dest_name);
             }
+#endif /* CONFIG_TCC_CODESONAR_BLOCKED */
         }
     }
     return ret;

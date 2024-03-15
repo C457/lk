@@ -205,12 +205,14 @@ static void _loc_DynamicFIFOAllocation(void)
 			break;
 	}
 
+#ifdef CONFIG_TCC_CODESONAR_BLOCKED
 	if( fifoAddress > 4160 )
 	{
 		USBDEV_ERROR("FIFO allocation overflow is occurred!!! (size=%d / 4160)",fifoAddress);
 		while(1);	// FIFO allocation overflow is occurred!!!
 	}
 	else
+#endif /* CONFIG_TCC_CODESONAR_BLOCKED */
 	{
 		USBDEV_DEBUG("FIFO allocation. (size=%d / 4160)",fifoAddress);
 	}
@@ -614,8 +616,22 @@ static void OTGDEV_IO_EP_OUT_StartTransfer(unsigned int nEndPoint)
 	//BITSET(HwUSB20OTG->GINTMSK, GINTMSK_RxFLvlMsk_UNMASK);
 	//#elif defined(DMA_MODE_INCLUDE)
 	unsigned int PktCnt,XferSize;
+#if !defined(CONFIG_TCC_CODESONAR_BLOCKED)
+	unsigned char iLastQ = '\0';
+	PUSBDEV_QUEUE_T pLastQ = NULL;
+
+	if (nEndPoint == 0)
+	{
+		USBDEV_DEBUG("End point is 0");
+		return;
+	}
+
+	iLastQ = gOTGDEV_IO_EpOut[nEndPoint].iLastQ;
+	pLastQ = &gOTGDEV_IO_EpOut[nEndPoint].queue[iLastQ];
+#else
 	unsigned char iLastQ = gOTGDEV_IO_EpOut[nEndPoint].iLastQ;
 	PUSBDEV_QUEUE_T pLastQ = &gOTGDEV_IO_EpOut[nEndPoint].queue[iLastQ];
+#endif
 
 	XferSize = pLastQ->xferLen;
 	PktCnt = (XferSize+gOTGDEV_IO_EpOut[nEndPoint].MPS-1)/gOTGDEV_IO_EpOut[nEndPoint].MPS;

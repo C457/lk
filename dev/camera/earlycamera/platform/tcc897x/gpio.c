@@ -229,11 +229,20 @@ void gpio_set(unsigned n, unsigned on)
 	unsigned num = n&GPIO_BITMASK;;
 	unsigned bit = (1<<num);
 
+#if 0	/* 2019.05.17 - Issue)When a bit of GPnDAT clears, it sometimes affects entire GPIO B port.*/
 	if (r != 0) {
 		if (on) {
 			writel(readl(r->data) | bit, r->data);
 		} else {
 			writel(readl(r->data) & (~bit), r->data);
+		}
+	}
+#endif	/* 2019.05.17 - Fix)Use GPnSET, GPnCLR register.*/
+	if (r != 0) {
+		if (on) {
+			writel(bit, r->out_or);
+		} else {
+			writel(bit, r->out_bic);
 		}
 	}
 }
