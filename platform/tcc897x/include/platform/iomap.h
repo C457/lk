@@ -72,4 +72,11 @@
 #define TCC_GIC_CPU_BASE	0x77102000
 #define TCC_CCICFG_BASE		0x738B0000
 
+//refer : u-boot/include/configs/tcc8971-lcn.h
+#if WITH_DEBUG_LOG_BUF
+#define PHYS_DDR_BASE				0x80000000	/* DDR Base Address */
+#define ABOOT_FORCE_UART_ADDR			PHYS_DDR_BASE + 0x3600000      /* 31k */
+#define ABOOT_FORCE_UART_COUNT_ADDR		PHYS_DDR_BASE + 0x3607C00     /* 1k */
+#endif // WITH_DEBUG_LOG_BUF
+
 #endif

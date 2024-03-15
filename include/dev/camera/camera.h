@@ -95,6 +95,7 @@ struct tcc_cif_parameters
 	
 	unsigned int Viqe_area;
 	unsigned int PGL_addr;
+	unsigned int Log_addr;
 	unsigned int Camera_type;
 	struct viocmg_info viocmg_info;
 

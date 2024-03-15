@@ -92,4 +92,8 @@ unsigned long get_daudio_hw_adc(void);
 unsigned long get_daudio_main_adc(void);
 //unsigned long get_daudio_bt_adc(void);
 unsigned long get_daudio_lcd_adc(void);
+
+#ifdef MOBIS_GET_DATA_FROM_MICOM
+int set_signal_to_micom(unsigned on);
+#endif
 #endif

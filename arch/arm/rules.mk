@@ -127,7 +127,7 @@ endif
 ifeq ($(TARGET_GCC_VERSION),4.7)
 TOOLCHAIN_PREFIX ?= ../../../prebuilts/gcc/linux-x86/arm/arm-eabi-4.6/bin/arm-eabi-
 else
-TOOLCHAIN_PREFIX ?= z
+TOOLCHAIN_PREFIX ?= arm-eabi-
 endif
 ifeq ($(TOOLCHAIN_PREFIX),arm-none-linux-gnueabi-)
 # XXX test for EABI better than this

@@ -20,7 +20,7 @@ endif
 
 ifeq ($(EARLY_CAM_MODULE),tw9921)
 OBJS += \
-	$(LOCAL_DIR)/tw9921.o
+	$(LOCAL_DIR)/tw9990.o	\
 DEFINES += EARLY_CAM_MODULE_TW9921
 endif
 

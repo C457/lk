@@ -48,6 +48,11 @@ struct viocmg_info {
         unsigned int early_cam_parking_line_width;
         unsigned int early_cam_parking_line_height;
         unsigned int early_cam_parking_line_format;
+// These parameters are for 2021.03, when 140pixels Left black screen is required to Add
+		unsigned int early_cam_bg_x;
+		unsigned int early_cam_bg_y;
+		unsigned int early_cam_bg_width;
+		unsigned int early_cam_bg_height;
 };
 
 extern struct viocmg_info viocmg_info;

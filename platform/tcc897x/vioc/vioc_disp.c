@@ -296,7 +296,8 @@ void VIOC_DISP_SetControlConfigure(VIOC_DISP *pDISP, stLCDCTR *pCtrlParam)
 								(pCtrlParam->pxdw << 16 ) |
 								(pCtrlParam->dp <<9) |
 								(pCtrlParam->ni << 8 ) |	
-								(pCtrlParam->tv << 7 ) 
+								(pCtrlParam->tv << 7 ) |
+								(1 << 6 /* SRST=1 */)
 			);
 #endif
 	

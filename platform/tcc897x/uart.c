@@ -162,7 +162,7 @@ static void uart_set_port_mux(unsigned int ch, unsigned int port)
 	else if (ch < 8)
 		BITCSET(pUARTPORTCFG->PCFG1.nREG, 0xFF<<((ch-4)*8), port<<((ch-4)*8));
 
-	if (ch == DEBUG_UART) {
+	if (ch == DEBUG_UART || ch == MICOM_UART) {
 		gpio_config(uart_port_map[idx].tx_port, uart_port_map[idx].fn_sel);	// TX
 		gpio_config(uart_port_map[idx].rx_port, uart_port_map[idx].fn_sel);	// RX
 	}
@@ -227,6 +227,25 @@ int uart_getc(int port, bool wait)  /* returns -1 if no data available */
 	return uart_reg_read(port, UART_RBR);
 }
 
+#ifdef MOBIS_GET_DATA_FROM_MICOM
+int uart_getc_ex(int port, int time)
+{
+	int i = 0;
+
+	for (i=time;i>=0;i--)
+	{
+		if (!(uart_reg_read(port, UART_LSR) & LSR_DR))
+			continue;
+		else
+			break;
+	}
+	if (i<= 0)
+		return -1;
+	else
+		return uart_reg_read(port, UART_RBR);
+}
+#endif
+
 void uart_flush_tx(int port)
 {
 	/* wait for the last char to get out */
@@ -248,10 +267,19 @@ void uart_init_early(void)
 	tcc_set_peri(PERI_UART0, ENABLE, 48000000);
 	uart_set_gpio();
 	uart_init_port(DEBUG_UART, 115200);
+
+#ifdef MOBIS_GET_DATA_FROM_MICOM
+	tcc_set_peri(PERI_UART2, ENABLE, 48000000);
+	uart_init_port(MICOM_UART, 115200);
+#endif
 }
 
 void uart_init(void)
 {
 	uart_flush_rx(DEBUG_UART);
+
+#ifdef MOBIS_GET_DATA_FROM_MICOM
+	uart_flush_rx(MICOM_UART);
+#endif
 }
 

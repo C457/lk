@@ -80,6 +80,11 @@ struct viocmg_info
 	unsigned int early_cam_parking_line_width;
 	unsigned int early_cam_parking_line_height;
 	unsigned int early_cam_parking_line_format;
+
+	unsigned int early_cam_bg_x;
+	unsigned int early_cam_bg_y;
+	unsigned int early_cam_bg_width;
+	unsigned int early_cam_bg_height;
 };
 
 
@@ -119,6 +124,7 @@ struct tcc_cif_parameters
 	
 	unsigned int Viqe_area;
 	unsigned int PGL_addr;
+	unsigned int Log_addr;
 	
 	unsigned int Camera_type;
 

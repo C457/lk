@@ -55,7 +55,7 @@ int tcc_lcd_image_ch_set(struct tcc_lcdc_image_update * ImageInfo) {
 	VIOC_RDMA_SetImageBase(pRDMABase, ImageInfo->addr0, ImageInfo->addr1, ImageInfo->addr2);
 	
 	// image position
-	VIOC_WMIX_SetPosition(pWMIXBase, ImageInfo->Lcdc_layer, ImageInfo->offset_x, ImageInfo->offset_y);
+	//VIOC_WMIX_SetPosition(pWMIXBase, ImageInfo->Lcdc_layer, ImageInfo->offset_x, ImageInfo->offset_y);
 	
 	//mdelay(100);
 	//tcc_rear_camera_display(R_Gear_Status_Check());
@@ -64,20 +64,29 @@ int tcc_lcd_image_ch_set(struct tcc_lcdc_image_update * ImageInfo) {
 }
 
 void tcc_rear_camera_display(unsigned char OnOff) {
+	static int display_toggle = 0;
+
 	if (OnOff) { // display on.
 		VIOC_WMIX_SetOverlayPriority(pWMIXBase, Viocmg_info->early_cam_ovp);
 		VIOC_RDMA_SetImageEnable(pRDMABase);
-		gpio_set(TCC_GPB(4), 1);
 		Viocmg_info->early_cam_mode = 2;
 			
 	} else {
 		VIOC_WMIX_SetOverlayPriority(pWMIXBase, Viocmg_info->main_display_ovp);			
 		VIOC_RDMA_SetImageDisable(pRDMABase);
-		gpio_set(TCC_GPB(4), 0);
 		Viocmg_info->early_cam_mode = 0;
  	}
+
+	VIOC_WMIX_SetUpdate(pWMIXBase); //2020.10.05 - booting logo was shown for a short time in display-off mode. So update wmix first before set gpio high
+
+	if(OnOff != display_toggle)
+	{
+		if(OnOff == 1) mdelay(30); //2020.10.05 - booting logo was shown for a short time in display-off mode. Put 30ms delay.
+		gpio_set(TCC_GPB(4), OnOff);	//2019.05.20 - Call 'gpio_set' when 'OnOff' value is changed.
+		display_toggle = OnOff;
+		printk("Display Status(%s)\n",display_toggle?"On":"Off");
+	}
 		
-	VIOC_WMIX_SetUpdate(pWMIXBase);
 }
 
 void tcc_rear_camera_wmix_channel_prioty(void) {

@@ -364,7 +364,7 @@ int sensor_video_check(void) {
 			break;
 		}
 		if (tmp >= 9) { // waiting for 1000ms.
-			printk("CM4(E-CAM):	fail to video signal check(%d). \n", tmp);
+			printk("CM4(E-CAM)(tw9921):	fail to video signal check(%d). \n", tmp);
 			ret = -1;
 			break;
 		} else {

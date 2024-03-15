@@ -8,7 +8,7 @@ OBJS += $(LOCAL_DIR)/init.o
 #==================================================================
 # Snapshot Boot Option
 #==================================================================
-TCC_QUICKBOOT_USE := 1
+TCC_QUICKBOOT_USE :=
 
 
 ifeq ($(TCC_QUICKBOOT_USE),1)

@@ -47,7 +47,6 @@ static struct sensor_reg cvbs_composite[] = {
     {0x03, 0xA0},
     {0x04, 0x00},
     {0x05, 0x00},
-    {0x06, 0x00},
     {0x1C, 0x08},
     {0x07, 0x02},
     {0x08, 0x12},
@@ -114,6 +113,7 @@ static struct sensor_reg cvbs_composite[] = {
     {0x6F, 0x13},
     {0xAE, 0x1A},
     {0xAF, 0x80},
+    {0x06, 0x80},	//2018.08.07 - sw reset before initialization, stms178011 rearcam image shift issue.
 	{0xFF, 0xFF}
 };
 
@@ -127,7 +127,6 @@ static struct sensor_reg s_video[] = {
     {0x03, 0xA0},
     {0x04, 0x00},
     {0x05, 0x00},
-    {0x06, 0x00},
     {0x07, 0x02},
     {0x08, 0x12},
     {0x09, 0xF0},
@@ -151,7 +150,7 @@ static struct sensor_reg s_video[] = {
     {0x19, 0x58},
     {0x1A, 0x0A},
     {0x1B, 0x00},
-    {0x1C, 0x07},
+    {0x1C, 0x00},
     {0x1D, 0x7F},
     {0x1E, 0x08},
     {0x1F, 0x00},
@@ -194,6 +193,7 @@ static struct sensor_reg s_video[] = {
     {0x6F, 0x13},
     {0xAE, 0x1A},
     {0xAF, 0x80},
+    {0x06, 0x80},	//2018.08.07 - sw reset before initialization, stms178011 rearcam image shift issue.
 	{0xFF, 0xFF}
 };
 
@@ -202,14 +202,21 @@ static struct sensor_reg sensor_regs_stop[] = {
 	{0xFF, 0xFF}
 };
 
-static struct sensor_reg sensor_regs_ie[] = {
-    {0x10, 0x00},
-    {0x11, 0x64},
-    {0x13, 0x80},
-    {0x14, 0x80},
+static struct sensor_reg sensor_cvbs_regs_ie[] = {
+    {0x10, 0xFB},	//2018.10.04 - IE Default Change (123,95,128)
+    {0x11, 0x5F},	//2018.11.22 - IE Default Change (123,95,100)
+    {0x13, 0x64},
+    {0x14, 0x64},
     {0xFF, 0xFF}
 };
 
+static struct sensor_reg sensor_svideo_regs_ie[] = {
+    {0x10, 0xE9},   //2019.05.23 - IE Default Change (105,105,105)
+    {0x11, 0x69},   
+    {0x13, 0x69},   
+    {0x14, 0x69},   
+    {0xFF, 0xFF}
+};
 
 struct sensor_reg * sensor_regs_type_and_encode[CAM_TYPE_MAX][CAM_ENC_MAX] = {
 	// CAM_TYPE_DEFAULT
@@ -289,24 +296,15 @@ struct tcc_cif_parameters atv_parameters_data = {
 	.feature_early_view_enable = 1,
 	.feature_early_view_use_viqe = 1,
 	.feature_early_view_viqe_mode = 0,
-#if defined (CONFIG_TCC_PARKING_GUIDE_LINE)
-	.feature_early_view_use_parking_line = 1,
-#else
 	.feature_early_view_use_parking_line = 0,
-#endif
 	.early_cam_cifport = 4,
 	.early_cam_vin_vin = 0,
 	.early_cam_vin_rdma = 16,
 	.early_cam_vin_wmix = 5,
 	.early_cam_vin_wdma = 5,
 	.early_cam_vin_scaler = 0,
-#if defined(WIDE_LCD_DEFINE)
 	.main_display_id = 0,
 	.early_cam_display_rdma = 1,
-#else
-	.main_display_id = 1,
-	.early_cam_display_rdma = 5,
-#endif
 	.early_cam_gear_port = TCC_GPE(8),
 	.early_cam_gear_port_active_level = 1,
 	.early_cam_ovp = 19,
@@ -324,6 +322,11 @@ struct tcc_cif_parameters atv_parameters_data = {
 	.early_cam_parking_line_width = 0,
 	.early_cam_parking_line_height = 0,
 	.early_cam_parking_line_format = TCC_LCDC_IMG_FMT_RGB888,
+
+	.early_cam_bg_x = 0,
+	.early_cam_bg_y = 0,
+	.early_cam_bg_width = 0,
+	.early_cam_bg_height = 0,
 	}
 };
 
@@ -385,6 +388,7 @@ static int write_regs(const struct sensor_reg reglist[]) {
 					return err;
 				}
 			} else {
+        			//dprintf(INFO,"cmd : 0x%02x, val : 0x%02x\n", data[0], data[1]);
 				err_cnt = 0;
 				next++;
 			}
@@ -394,7 +398,9 @@ static int write_regs(const struct sensor_reg reglist[]) {
 }
 
 int sensor_tune(unsigned int camera_type, unsigned int camera_encode) {
-	struct ie_setting_info info_ie_read;
+    unsigned int brightness_min= 0, brightness_max = 0, contrast_min = 0, contrast_max = 0, saturation_max = 0, saturation_min = 0;
+    struct sensor_reg * sensor_regs_ie = sensor_cvbs_regs_ie;
+    struct ie_setting_info info_ie_read;
 
 	//dprintf(INFO, "!@#---- %s()\n", __func__);
 
@@ -403,21 +409,38 @@ int sensor_tune(unsigned int camera_type, unsigned int camera_encode) {
 		dprintf(INFO, "!@#---- %s() - WRONG arguments\n", __func__);
 		return -1;
 	}
-
+    switch(camera_type) {
+        case 1 :
+            brightness_min = 90, brightness_max = 120, contrast_min = 90, contrast_max = 120, saturation_min = 90, saturation_max = 120;
+            sensor_regs_ie = sensor_svideo_regs_ie;
+            break;
+        default : 
+            brightness_min = 78, brightness_max = 168, contrast_min = 50, contrast_max = 140, saturation_min = 55, saturation_max = 145;
+            sensor_regs_ie = sensor_cvbs_regs_ie;
+            break;
+        }
 	dprintf(INFO, "Default@#---- %s() - twxxxx_cam_brightness=%d,twxxxx_cam_contrast=%d,twxxxx_cam_saturationu=%d\n", __func__,(char)sensor_regs_ie[0].val + 128 ,sensor_regs_ie[1].val ,sensor_regs_ie[2].val );
 
 	read_ie_setting(&info_ie_read);
 	
 	//brightness : default(128) +-25, min(103), max(153)
-	if(info_ie_read.twxxxx_cam_brightness >= 103 && info_ie_read.twxxxx_cam_brightness <= 153)
+	//2018.10.04 - maximum value change 153 -> 143, default(123)
+	//2018.11.22 - default(123), min(108), max(138)
+    //2019.05.23(svideo) - default(105), min(90), max(120)
+	if(info_ie_read.twxxxx_cam_brightness >= brightness_min && info_ie_read.twxxxx_cam_brightness <= brightness_max)
 		sensor_regs_ie[0].val = info_ie_read.twxxxx_cam_brightness - 128;
 
 	//contrast : default(100) +-25, min(75), max(125)
-	if(info_ie_read.twxxxx_cam_contrast >= 75 && info_ie_read.twxxxx_cam_contrast <= 125)
+	//2018.10.04 - maximum value change 125 -> 115, default(95)
+	//2018.11.22 - default(95), min(80), max(110)
+    //2019.05.23(svideo) - default(105), min(90), max(120)
+	if(info_ie_read.twxxxx_cam_contrast >= contrast_min && info_ie_read.twxxxx_cam_contrast <= contrast_max)
 		sensor_regs_ie[1].val = info_ie_read.twxxxx_cam_contrast;
 
 	//saturation : default(128) +-25, min(103), max(153)
-	if(info_ie_read.twxxxx_cam_saturation >= 103 && info_ie_read.twxxxx_cam_saturation <= 153)
+	//2018.11.22 : default(100), min(75), max(125)
+    //2019.05.23(svideo) : default(105), min(90), max(120)
+	if(info_ie_read.twxxxx_cam_saturation >= saturation_min && info_ie_read.twxxxx_cam_saturation <= saturation_max)
 	{
 		sensor_regs_ie[2].val = info_ie_read.twxxxx_cam_saturation;
 		sensor_regs_ie[3].val = info_ie_read.twxxxx_cam_saturation;

@@ -93,6 +93,7 @@ unsigned check_reboot_mode(void)
 	static bool sbSet=false;
 	unsigned int usts;
 	unsigned int mode;
+	int android_reboot=0;
 
 	if( false==sbSet)
 	{
@@ -105,6 +106,7 @@ unsigned check_reboot_mode(void)
 			if( 0==strcmp("boot-bootloader", Msg.command) )
 			{
 				writel(1, PMU_USSTATUS);
+				android_reboot=1;
 				memset(&Msg, 0, sizeof(Msg));
 				if( 0!=get_recovery_message(&Msg) ) // clear message.
 					dprintf(INFO, "[fail]emmc_set_recovery_msg\n");
@@ -112,10 +114,22 @@ unsigned check_reboot_mode(void)
 			else if( 0==strcmp("boot-recovery", Msg.command) )
 			{
 				writel(2, PMU_USSTATUS);
+				android_reboot=2;	// boot-recovery
 			}
 			else if( 0==strcmp("boot-force_normal", Msg.command) )
 			{
 				writel(3, PMU_USSTATUS);
+				android_reboot=3;	// boot-force_normal
+			}
+			else if( 0==strcmp("boot-panic", Msg.command) )
+			{
+				writel(4, PMU_USSTATUS);
+				android_reboot=4;	// panic
+			}
+			else if( 0==strcmp("boot-android", Msg.command) )
+			{
+				writel(0, PMU_USSTATUS);
+				android_reboot=5;	// android_reset  or reboot command
 			}
 			else
 			{
@@ -151,14 +165,15 @@ unsigned check_reboot_mode(void)
 		mode = 0x77665503;      /* force normal mode : skip quickboot */
 		break;
 //-[TCCQB]
-//
-
+	case 4:
+		mode = 0x77665504;      /* panic : skip quickboot */
+		break;
 	default:
 		mode = 0x77665501;
 		break;
 	}
 
-	dprintf(SPEW, "reboot mode = 0x%x\n", mode);
+	dprintf(SPEW, "reboot mode = 0x%x, android_reboot=%d\n", mode, android_reboot);
 	return mode;
 }
 

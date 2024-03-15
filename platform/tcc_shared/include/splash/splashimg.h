@@ -2,9 +2,8 @@
 #define __SPLASHIMG_H__
 
 #include <dev/fbcon.h>
-#include <TCC_JPU_C6.h>
 
-#define	IMAGE_SIZE_MAX		10
+#define	IMAGE_SIZE_MAX		30
 #define SPLASH_TAG		"splash"
 #define SPLASH_TAG_SIZE		6
 
@@ -16,7 +15,7 @@
 
 
 typedef struct SPLASH_IMAGE_INFO{
-	 char		ucImageName[16];
+	 char		ucImageName[20];
 	unsigned int 		ulImageAddr;
 	unsigned int		ulImageSize;
 	unsigned int		ulImageWidth;
@@ -24,11 +23,10 @@ typedef struct SPLASH_IMAGE_INFO{
 	unsigned int 		Padding;
 	unsigned char		ucFmt[5];
 	unsigned char		ucRev[7];
-	
 }SPLASH_IMAGE_INFO_t;
 
 typedef struct SPLASH_IMAGE_Header_info{
-	char 	ucPartition[8];
+	unsigned char 	ucPartition[8];
 	int		                  ulNumber;	
 	unsigned char 		ucRev[4];
 	SPLASH_IMAGE_INFO_t	SPLASH_IMAGE[IMAGE_SIZE_MAX];
@@ -40,14 +38,7 @@ typedef struct SPLASH_BUFFER {
 	unsigned int size;
 }SPLASH_BUFFER_t;
 
-#if defined(BOOTSD_INCLUDE)
-int splash_image_load_sdmmc(char *partition, struct fbcon_config *fb_cfg);
-#endif
-
-int splash_image(char* partition);
 int splash_image_load(char *partition, struct fbcon_config *fb_cfg);
-
-int get_splash_image_early_camera_V2(char *image_name, unsigned int parking_guide, unsigned int *width, unsigned int *height);
 
 #endif
 

@@ -51,6 +51,10 @@
 #include <daudio_ver.h>
 #include <dev/gpio.h>
 
+#ifdef MOBIS_GET_DATA_FROM_MICOM
+#include <mobis_getdata_micom.h>
+#endif
+
 #define LINUX_MACHTYPE  5014
 
 extern  bool target_use_signed_kernel(void);
@@ -73,6 +77,11 @@ extern unsigned int get_factory_rst_flag(void);
 #endif
 #define RECOVERY_MODE   0x77665502
 
+static void control_boot_ok_pin(void);
+
+unsigned char lcd_ver = 0;
+int serdes_connect;
+
 void target_early_init(void)
 {
 	i2c_init(I2C_CH_MASTER0, 22);
@@ -87,29 +96,25 @@ void target_init(void)
 	uint32_t base_addr;
 	uint8_t slot;
 
-	unsigned char lcd_ver = get_daudio_lcd_ver();
+	lcd_ver = get_daudio_lcd_ver();
 
 	dprintf(INFO, "target_init()\n");
+	dprintf(INFO, "## build date : %s, time : %s ##\n", __DATE__, __TIME__);
 
 	dprintf(INFO, "LCD ADC : %d GPIO_B24 : %d (OE:1/PIO:0) GPIO_B13 : %d (Int:1/De:0)\n",
 			get_daudio_lcd_ver(), gpio_get(TCC_GPB(24)), gpio_get(TCC_GPB(13)));
 
-
-	switch(lcd_ver)
-	{
-		case 0:
-		case 5:
-		case 7:
-			hdmi_set_reg_1();
-			break;
-		default:
-			break;
+	if (!check_fwdn_mode()) {
+		hdmi_serdes_pre_init();
 	}
-
 
 	if (target_is_emmc_boot()) {
 		emmc_boot_main();       // emmc boot
 	}
+
+ #ifdef MOBIS_GET_DATA_FROM_MICOM
+	get_data_from_micom();
+#endif
 
 	dprintf(INFO, "farmer_Display Init: Start\n");
 	display_init();
@@ -124,52 +129,210 @@ void target_init(void)
 	load_parking_guide();
 #endif
 
-	switch(lcd_ver)
-	{
-		case 0:
-		case 7:
-			mdelay(60);
-	                hdmi_set_reg_2_OE();
-			break;
-		case 5:
-			mdelay(60);
-	                hdmi_set_reg_2_PIO();
-			break;
-		case 3:
-			gpio_config(TCC_GPB(29),1);
-                	gpio_set(TCC_GPB(29),1);
-        	        dprintf(INFO,"TCC_GPB(29) : %d HIGH\n", gpio_get(TCC_GPB(29)));
-
-	                seperated_serdes_reg_10_25();
-			break;
-		case 4:
-			gpio_config(TCC_GPB(29),1);
-	                gpio_set(TCC_GPB(29),1);
-	                dprintf(INFO,"TCC_GPB(29) : %d HIGH\n", gpio_get(TCC_GPB(29)));
-
-	                seperated_serdes_reg_12_3();
-			break;
-		case 10:
-			dprintf(INFO,"There is no monitor\n");
-			break;
-		case 6:
-			if(gpio_get(TCC_GPB(24)))
-				break;//OE serdes+lvds
-			else
-				break;//PIO lvds
-		default:
-			dprintf(INFO,"ADC value is wrong\n");
-			break;
+	if (!check_fwdn_mode()) {
+		hdmi_serdes_post_init();
 	}
 
-
 	if (!check_fwdn_mode()) {
-		gpio_set(TCC_GPC(29), 1);
-
-		dprintf(INFO, "test TCC_GPC(29) HIGH\n");
+		control_boot_ok_pin();
 	}
 
 	return;
+}
+
+void hdmi_serdes_pre_init()
+{
+	int i;
+
+	int serdes_line_fault = 0;
+
+	int lock_check_retry = 3;
+
+	if(gpio_get(TCC_GPB(24))) // OE
+		if(gpio_get(TCC_GPB(13)))
+			switch(lcd_ver)
+			{
+				case DAUDIOKK_LCD_OI_10_25_1920_720_INCELL_Si_LG : //0
+				case DAUDIOKK_LCD_OI_10_25_1920_720_INCELL_Si_2_LG : //1
+				case DAUDIOKK_LCD_OI_10_25_1920_720_INCELL_LTPS_LG : //7
+					hdmi_set_reg_1();
+					break;
+				case DAUDIOKK_LCD_OI_08_00_1280_720_OGS_Si_BOE: //8
+					break;
+				default :
+					dprintf(INFO,"ADC value is wrong %d\n", lcd_ver);
+					break;
+			}
+		else
+		{
+			gpio_config(TCC_GPB(29),1);
+			gpio_set(TCC_GPB(29),1);
+			dprintf(INFO,"TCC_GPB(29) : %d HIGH\n", gpio_get(TCC_GPB(29)));
+
+			udelay2(10000);
+
+			serdes_line_fault = serdes_line_fault_check();
+
+			if(!serdes_line_fault)
+			{
+				dprintf(INFO, "LCD LINE FAULT NOT OK\n");
+				serdes_connect = 0;
+				return;
+			}
+
+			for(i = 0;i <= lock_check_retry; i++)
+			{
+				udelay2(10000);
+				serdes_connect = serdes_connect_check();
+				if(serdes_connect)
+					break;
+			}
+
+			if(serdes_connect) {
+				dprintf(INFO, "LCD CONNECTED\n");
+			}
+			else {
+				if(serdes_line_fault) {
+					dprintf(INFO, "LCD LINE FAULT OK\n");
+                                        ser_reg_3gbps();
+					for(i=0;i<20;i++)
+						udelay2(10000);
+                                        serdes_connect = serdes_connect_check();
+
+                                        if(serdes_connect) {
+                                                dprintf(INFO, "LCD CONNECTED\n");
+                                        }
+                                        else {
+                                                dprintf(INFO, "LCD DISCONNECTED\n");
+                                        }
+                                }
+                                else {
+                                        dprintf(INFO, "LCD DISCONNECTED\n");
+                                }
+			}
+			switch(lcd_ver)
+		        {
+				case DAUDIOKK_LCD_OD_10_25_1920_720_INCELL_Si_LG: //3
+			        	seperated_serdes_reg_10_25(serdes_connect);
+			                break;
+			        case DAUDIOKK_LCD_OD_12_30_1920_720_INCELL_Si_LG: //4
+			        	seperated_serdes_reg_12_3(serdes_connect);
+					serdes_reg_3gbps();
+			                break;
+				case DAUDIOKK_LCD_OD_10_25_1920_720_INCELL_LTPS_LG: //5
+					dprintf(INFO,"TCC_GPB(8) : %d\n",gpio_get(TCC_GPB(8)));
+					if(factory_connect_for_lcd())
+					{
+						seperated_serdes_reg_12_3(serdes_connect);
+						break;
+					}
+	        	                seperated_serdes_reg_10_25_ltps(serdes_connect);
+					for(i=0;i<3;i++)
+						udelay2(10000);
+					serdes_reg_3gbps();
+	        	                break;
+				case DAUDIOKK_LCD_OD_08_00_1280_720_OGS_Si_BOE: //6 HDMI SERDES
+			        	seperated_serdes_reg_8_0();
+			                break;
+				default :
+					dprintf(INFO,"ADC value is wrong %d\n", lcd_ver);
+					break;
+			}
+                }
+	else // PIO
+                switch(lcd_ver)
+                {
+			case DAUDIOKK_LCD_PI_10_25_1920_720_PIO_AUO : //5
+				hdmi_set_reg_1();
+	                        break;
+			case DAUDIOKK_LCD_PI_08_00_800_400_PIO_TRULY :
+				break;
+			default:
+				dprintf(INFO,"ADC value is wrong %d\n", lcd_ver);
+	                        break;
+                }
+}
+
+void hdmi_serdes_post_init()
+{
+	int i=0;
+	if(gpio_get(TCC_GPB(24))) // OE
+		if(gpio_get(TCC_GPB(13)))
+			switch(lcd_ver)
+			{
+				case DAUDIOKK_LCD_OI_10_25_1920_720_INCELL_Si_LG : //0
+        	                case DAUDIOKK_LCD_OI_10_25_1920_720_INCELL_Si_2_LG : //1
+	                        case DAUDIOKK_LCD_OI_10_25_1920_720_INCELL_LTPS_LG : //7
+					for(i=0;i<6;i++)
+						udelay2(10000);
+					hdmi_set_reg_2_OE();
+					break;
+				case DAUDIOKK_LCD_OI_08_00_1280_720_OGS_Si_BOE: //8
+					break;
+				default :
+					dprintf(INFO, "ADC value is wrong %d\n", lcd_ver);
+					break;
+			}
+		else {
+			switch(lcd_ver)
+			{
+				case DAUDIOKK_LCD_OD_12_30_1920_720_INCELL_Si_LG: //4
+					serdes_reg_12_3_touch(serdes_connect);
+					break;
+				case DAUDIOKK_LCD_OD_10_25_1920_720_INCELL_LTPS_LG: //5
+					serdes_reg_10_25_ltps_touch(serdes_connect);
+					break;
+				case DAUDIOKK_LCD_OI_DISCONNECTED: //10
+					dprintf(INFO,"There is no monitor\n");
+					break;
+				default:
+					dprintf(INFO,"ADC value is wrong\n");
+					break;
+			}
+		}
+	else 			// PIO
+		switch(lcd_ver)
+                {
+			case DAUDIOKK_LCD_PI_10_25_1920_720_PIO_AUO: //5
+				for(i=0;i<6;i++)
+					udelay2(10000);
+                                hdmi_set_reg_2_PIO();
+				break;
+                        case DAUDIOKK_LCD_PI_08_00_800_400_PIO_TRULY: //6
+                                break;
+			case DAUDIOKK_LCD_PI_DISCONNECTED: //10
+                                dprintf(INFO,"There is no monitor\n");
+                                break;
+                        default:
+                                dprintf(INFO,"ADC value is wrong\n");
+                                break;
+                }
+}
+
+void target_control_vbus(unsigned on)
+{
+	gpio_set(TCC_GPC(29), on);
+}
+
+static void control_boot_ok_pin(void)
+{
+	int i =0;
+	gpio_set(TCC_GPC(29), 1);
+	for(i=0;i<10;i++)
+	{
+		dprintf(INFO, "TCC_GPC(29) HIGH\n");
+		if(gpio_get(TCC_GPC(29)))
+		{
+			break;
+		}
+		else
+		{
+			dprintf(INFO, "TCC_GPC(29) current low, count=%d\n", i);
+			udelay2(10);
+			gpio_set(TCC_GPC(29), 1);
+		}
+	}
+	dprintf(INFO, "TCC_GPC(29) boot_ok_pin HIGH\n");
 }
 
 unsigned board_machtype(void)
@@ -332,6 +495,8 @@ void target_cmdline_serialno(char *cmdline)
 #elif defined(PIO_WIDE_4GB_PARTITION)
 		sprintf(s, " root=/dev/mmcblk0p2 rw rootfstype=ext4 rootwait noinitrd", s2);
 #elif defined(PIO_WIDE_8GB_PARTITION)
+		sprintf(s, " root=/dev/mmcblk0p2 rw rootfstype=ext4 rootwait noinitrd", s2);
+#elif defined(PIO_WIDE_8GB_PARTITION2)
 		sprintf(s, " root=/dev/mmcblk0p2 rw rootfstype=ext4 rootwait noinitrd", s2);
 #else
 		sprintf(s, " root=/dev/mmcblk0p3 rw rootfstype=ext2 rootwait noinitrd", s2);
@@ -507,6 +672,40 @@ void target_cmdline_daudio_active_partition(char* cmdline)
 
 	strcat(cmdline, s);
 }
+
+#ifdef MOBIS_GET_DATA_FROM_MICOM
+void target_cmdline_mobis_vehicle_code(char* cmdline)
+{
+	char s[64] = { 0, };
+
+	data_from_micom_t* p_vehicle_country_code = NULL;
+
+	p_vehicle_country_code = get_vehicle_country_info();
+	if(p_vehicle_country_code==NULL)
+		sprintf(s, " vehicle_info=0xff");
+	else
+		sprintf(s, " vehicle_info=0x%02x", p_vehicle_country_code->vehicle_code);
+
+	strcat(cmdline, s);
+	//dprintf(INFO, "cmdline=%s\n", cmdline);
+}
+void target_cmdline_mobis_country_code(char* cmdline)
+{
+	char s[64] = { 0, };
+
+	data_from_micom_t* p_vehicle_country_code = NULL;
+
+	p_vehicle_country_code = get_vehicle_country_info();
+	if(p_vehicle_country_code == NULL)
+		sprintf(s, " country_info=0xff");
+	else
+		sprintf(s, " country_info=0x%02x", p_vehicle_country_code->country_code);
+
+	strcat(cmdline, s);
+	dprintf(INFO, "cmdline=%s\n", cmdline);
+}
+#endif
+
 #ifdef FACTORYRST_CMDLINE
 void target_cmdline_factory_reset_flag(char* cmdline)
 {

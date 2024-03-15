@@ -69,9 +69,14 @@
 //#define PLL4_VALUE	0x06013203	// 800Mhz Memory
 //#define PLL4_VALUE	0x06014B04	// 900Mhz Memory
 //#define PLL4_VALUE	0x06014DC4	// 933Mhz Memory
+//#define PLL4_VALUE	0x06013AC3	// 940Mhz Memory
+//#define PLL4_VALUE 	0x060176C6	// 950Mhz Memory
+//#define PLL4_VALUE	0x06015004	// 960Mhz Memory
+//#define PLL4_VALUE	0x06017946	// 970Mhz Memory
+//#define PLL4_VALUE	0x06013D43	// 980Mhz Memory
+//#define PLL4_VALUE	0x06015284	// 990Mhz Memory
 //#define PLL4_VALUE	0x06013E83	// 1000Mhz Memory
-
-#define PLL4_VALUE	0x06014DC4	// 933Mhz Memory 
+#define PLL4_VALUE    0x06014B04  // 900Mhz Memory
 #define PLL2_VALUE	0x06034403	// temp.. io pll. (272MHz)
 #define MEMPLL_FVCO_kHz	((((PLL4_VALUE&0x0000FFC0)>>6)*24000)/(PLL4_VALUE&0x0000003F))	// FVCO=(m*FIN)/p
 #define MEMPLL_kHz	(MEMPLL_FVCO_kHz>>((PLL4_VALUE&0x00070000)>>16))		// FOUT=FVCO/(2^s)

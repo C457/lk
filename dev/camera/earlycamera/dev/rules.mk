@@ -27,7 +27,7 @@ DEFINES += CONFIG_SUPPORT_LVDS
 endif
 ifeq ($(SELECTED_DECODER), )
 OBJS += \
-	$(LOCAL_DIR)/tw9921.o \
+	$(LOCAL_DIR)/tw9990.o \
 	$(LOCAL_DIR)/lvds.o
 endif
 

@@ -114,6 +114,35 @@ void SD_BUS_Initialize(void)
 
 }
 
+static int SD_BUS_SwitchPowerOffNoti(PSD_SLOT_T pSlot)
+{
+	unsigned char ucPON = 0;
+
+	if(pSlot->ext_csd_441.EXT_CSD_REV >= 6) {
+		printf("[MMC] power off noti value : 0x%x\n", pSlot->ext_csd_441.POWER_OFF_NOTI);
+		ucPON = 1;
+
+		if(SD_SLOT_switchEXTCSD(pSlot, 34, ucPON, 0) < 0) {
+			printf("[MMC] Switching command failed.\n");
+			return -1;
+		}
+
+		// remove verify operations for boot time
+		//if(SD_SLOT_MMC_ReadEXTCSD(pSlot, (unsigned char*)&pSlot->ext_csd_441) < 0){
+		//	printf("[MMC] failed the ReadEXTCSD operation\n");
+		//	return -1;
+		//}
+	}
+
+	//if(ucPON == 0){
+	//	printf("[MMC] The ECSD version is lower than 4.41\n");
+	//} else {
+	//	printf("[MMC] Set the Power On (0x%x)\n", pSlot->ext_csd_441.POWER_OFF_NOTI);
+	//}
+	printf("[MMC] Set the Power On.\n");
+	return 0;
+}
+
 int SD_BUS_IsWriteProtected(int iSlotIndex)
 {
 	PSD_SLOT_T pSlot;
@@ -197,6 +226,9 @@ static unsigned long SD_BUS_Scan(PSD_SLOT_T pSlot)
 		SD_SLOT_GetSCR(pSlot, pSlot->rca, &pSlot->stSCR);
 		SD_SLOT_Read_SDStatus(pSlot, pSlot->rca);
 	}
+
+	//add patch, power off notification (power on)
+	SD_BUS_SwitchPowerOffNoti(pSlot);
 
 	pSlot->size	 = SD_SLOT_GetSize(pSlot);
 	pSlot->sect_per_block = 128;
@@ -372,33 +404,34 @@ int SD_BUS_GetUpdateSlotIndex(void)
 **********************************************************/
 int SD_BUS_MEM_Request(int iSlotIndex, int rwFlag, unsigned long LBA_addr, unsigned long nSector, void *buff)
 {
+#if !defined(CONFIG_TCC_CODESONAR_BLOCKED)
+	PSD_SLOT_T pSlot = NULL;
+#else
 	PSD_SLOT_T pSlot;
+#endif
 	int iCmd;
-	int iError = -1;
+	int iError = -1, never_release;
 	unsigned int status = 0;
 	unsigned short rw_result = 0;
 
 	if(SD_BUS_SlotIndex_Validate(iSlotIndex)==0)
 	{
-		printf("%s : SD_BUS_SlotIndex_Validate failed\n", __func__);
-		goto check_status;
-		//return -1;
+		dprintf(CRITICAL, "%s : SD_BUS_SlotIndex_Validate failed\n", __func__);
+		return -1;
 	}
 
 	pSlot = &sSD_BUS_Slot[iSlotIndex];
 
 	if (SD_SLOT_IsCardDetected(pSlot) == 0)
 	{
-		printf("%s : SD_SLOT_IsCardDetected failed\n", __func__);
-		goto check_status;
-		//return MMC_ERR_NODETECT;
+		dprintf(CRITICAL, "%s : SD_SLOT_IsCardDetected failed\n", __func__);
+		return MMC_ERR_NODETECT;
 	}
 
 	if(nSector == 0 || buff == (void*)0)
 	{
-		printf("%s : Wrong request\n", __func__);
-		goto check_status;
-		//return -1;
+		dprintf(CRITICAL, "%s : Wrong request\n", __func__);
+		return -1;
 	}
 
 	if (ISZERO(pSlot->card_prop, SDMMC_PROP_HCS))
@@ -410,8 +443,8 @@ int SD_BUS_MEM_Request(int iSlotIndex, int rwFlag, unsigned long LBA_addr, unsig
 		iCmd = (nSector>1)? CMD25 : CMD24;
 	else
 	{
-		printf("%s : Wrong CMD\n", __func__);
-		goto check_status;
+		dprintf(CRITICAL, "%s : Wrong CMD\n", __func__);
+		return -1;
 	}
 
 	while(nSector>0)
@@ -434,20 +467,31 @@ int SD_BUS_MEM_Request(int iSlotIndex, int rwFlag, unsigned long LBA_addr, unsig
 			printf("%s : Data CMD%d is not completed\n", __func__, iCmd);
 			printf("%s : %s Addr(%u sector), Offset(%u sectors) failed\n",
 					__func__, rwFlag == SD_BUS_MEM_READ ? "Read":"Write", LBA_addr, rw_result);
-			goto check_status;
+
+			if(emmc_get_card_status(pSlot, &status))
+			{
+				printf("%s : emmc_get_card_status failed\n", __func__);
+			}
+			else
+			{
+				printf("%s : card status 0x%08x\n", __func__, pSlot->ulResponse[0]);
+			}
+
 		}
-	}
 
-	return iError;
+		if(rwFlag == SD_BUS_MEM_WRITE) {
+			never_release = SD_SLOT_mmc_poll_for_busy(pSlot, iCmd);
+			if (never_release != 0) {
+				printf("[MMC] %s : The busy state is never released\n", __func__);
+				return -1;
+			}
+		}
 
-check_status:
-	if(emmc_get_card_status(pSlot, &status))
-	{
-		printf("%s : emmc_get_card_status failed\n", __func__);
-	}
-	else
-	{
-		printf("%s : card status 0x%08x\n", __func__, pSlot->ulResponse[0]);
+		if (iError)
+			break;
+
+		LBA_addr += usPartialSector;
+		buff += (unsigned long)(usPartialSector * 512);
 	}
 	return iError;
 }
@@ -488,11 +532,23 @@ int SD_BUS_switchEXTCSD(int iSlotIndex, unsigned short usIndex, unsigned char uc
 
 unsigned int emmc_get_card_status(PSD_SLOT_T pSlot, unsigned int *status)
 {
+#if !defined(CONFIG_TCC_CODESONAR_BLOCKED)
+	int result = 0;	// result 0 is success
 
+	if (pSlot == NULL)
+		return 1;
+
+	result = SD_SLOT_SendCommand(pSlot , RspType1, CMD13, pSlot->rca);
+	if (result < 0)
+		return 1;
+	else
+		return result;
+#else
 	int result = 0;
 
 	result = SD_SLOT_SendCommand(pSlot , RspType1, CMD13, pSlot->rca);
 	return result;
+#endif
 }
 
 static int check_response(PSD_SLOT_T pSlot)
@@ -579,7 +635,12 @@ static int do_emmc_erase_write(unsigned long start_addr, unsigned long erase_siz
 			printf(".");
 		if( erase_size < erase_unit )
 			erase_unit = erase_size;
-		buf = calloc( 0x00, erase_unit*sizeof(char) );
+		buf = calloc( 0x01, erase_unit*sizeof(char) );
+#if !defined(CONFIG_TCC_CODESONAR_BLOCKED)
+		if (buf == NULL)
+			return -1;
+#else
+#endif
 		if ( emmc_write(NULL, (unsigned long long) start_addr, erase_unit, buf) != 0 )
 			return -1;
 		free( buf );
@@ -627,7 +688,11 @@ static inline unsigned long get_sdcard_density(PSD_SLOT_T pSlot)
 
 static unsigned long get_emmc_density(PSD_SLOT_T pSlot, unsigned long erase_unit)
 {
+#if !defined(CONFIG_TCC_CODESONAR_BLOCKED)
+	unsigned long BLOCKNR = 0, MULT, BLOCK_LEN = 0;
+#else
 	unsigned long BLOCKNR, MULT, BLOCK_LEN;
+#endif
 
 	if( pSlot->ext_csd_441.SEC_COUNT && pSlot->ext_csd_441.SEC_COUNT>0x00400000 )
 		return ( (unsigned long)pSlot->ext_csd_441.SEC_COUNT );

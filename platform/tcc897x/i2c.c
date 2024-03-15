@@ -112,12 +112,19 @@ static struct tcc_i2c i2c[I2C_CH_NUM] = {
 	},
 };
 
+static int ack_check(int i2c_name)
+{
+	if (i2c[i2c_name].regs->SR & Hw7)
+		return -1;
+	else
+		return 0;
+}
+
 static int wait_intr(int i2c_name)
 {
 	volatile unsigned long cnt = 0;
 
 	if (i2c_name < I2C_CH_SMU) {
-#if 1	
 		while (!(i2c_readl(i2c[i2c_name].IRQSTR) & (1<<i2c_name))) {
 			cnt++;
 			if (cnt > 100000) {
@@ -125,21 +132,6 @@ static int wait_intr(int i2c_name)
 				return -1;
 			}
 		}
-#else
-	/* check RxACK */
-	while (1) {
-		cnt++;
-		if ((i2c[i2c_name].regs->SR & Hw0)) {
-			if (!(i2c[i2c_name].regs->SR & Hw7)) {
-				break;
-			}
-		}
-		if (cnt > 100000) {
-			printf("i2c-tcc: time out!\n");
-			return -1;
-		}
-	}
-#endif
 	} else {
 		/* SMU_I2C wait */
 		while (1) {
@@ -175,6 +167,12 @@ int i2c_xfer(unsigned char slave_addr,
 		if (ret != 0) return ret;
 		BITSET(i2c[i2c_name].regs->CMD, Hw0); //Clear a pending interrupt
 
+		ret = ack_check(i2c_name);
+		if(ret != 0) {
+			printf("i2c ch %d receive NACK from 0x%x\n", i2c_name, (slave_addr >> 1));
+			return ret;
+		}
+
 		for (i = 0; i < out_len; i++) {
 			i2c[i2c_name].regs->TXR = out_buf[i];
 			i2c[i2c_name].regs->CMD = Hw4;
@@ -182,6 +180,12 @@ int i2c_xfer(unsigned char slave_addr,
 			ret = wait_intr(i2c_name);
 			if (ret != 0) return ret;
 			BITSET(i2c[i2c_name].regs->CMD, Hw0); //Clear a pending interrupt
+			
+			ret = ack_check(i2c_name);
+			if(ret != 0) {
+				printf("i2c ch %d receive NACK from 0x%x\n", i2c_name, (slave_addr >> 1));
+				return ret;
+			}
 		}
 
 		if(in_len <= 0)
@@ -206,12 +210,18 @@ int i2c_xfer(unsigned char slave_addr,
 		if (ret != 0) return ret;
 		BITSET(i2c[i2c_name].regs->CMD, Hw0); //Clear a pending interrupt
 
+		ret = ack_check(i2c_name);
+		if(ret != 0) {
+			printf("i2c ch %d receive NACK from 0x%x\n", i2c_name, (slave_addr >> 1));
+			return ret;
+		}
+
 		for (i = 0; i < in_len; i++) {
 			//i2c[i2c_name].regs->CMD = Hw5 | Hw3;
 			if (i == (in_len - 1)) 
-    			i2c[i2c_name].regs->CMD = Hw5 | Hw3;
-    		else
-    			i2c[i2c_name].regs->CMD = Hw5;
+				i2c[i2c_name].regs->CMD = Hw5 | Hw3;
+			else
+				i2c[i2c_name].regs->CMD = Hw5;
 
 			ret = wait_intr(i2c_name);
 			if (ret != 0) return ret;

@@ -15,7 +15,7 @@ extern int lvds_sensor_connect_api(SENSOR_FUNC_TYPE * sensor_func);
 int sensor_if_init(int camera_type) {
 	dprintf(SPEW,"camera_type : %d \n", camera_type);
 
-	if(camera_type == CAM_TYPE_LVDS)
+	if(camera_type == CAM_TYPE_LVDS || camera_type == CAM_TYPE_ADAS_PRK || camera_type == CAM_TYPE_DVRS_RVM)
 		lvds_sensor_connect_api(&sensor_func);
 	else
 		sensor_connect_api(&sensor_func);

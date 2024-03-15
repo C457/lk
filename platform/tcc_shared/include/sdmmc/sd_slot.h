@@ -164,5 +164,6 @@ void SD_SLOT_Detach(PSD_SLOT_T pSlot);
 int SD_SLOT_GetTotalSlotCount(void);
 int SD_SLOT_Read_SDStatus(PSD_SLOT_T pSlot, int iRCA);
 
+int SD_SLOT_mmc_poll_for_busy(PSD_SLOT_T pSlot, int cmd_index);
 
 #endif //_SD_SLOT_H

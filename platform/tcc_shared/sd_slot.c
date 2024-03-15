@@ -46,6 +46,8 @@
 #define SD_LOG			printf
 #endif
 
+#define BUSY_TIMEOUT		10000
+
 /************************************************************************
 *	Externs DEFINE
 ************************************************************************/
@@ -212,6 +214,48 @@ static void SD_SLOT_SetVoltage(PSD_SLOT_T pSlot, unsigned char voltsel)
 	BITCSET(pSdSlotReg->ucPowerControl,0x0F,ucPowerCtrl);
 }
 
+int SD_SLOT_mmc_poll_for_busy(PSD_SLOT_T pSlot, int cmd_index)
+{
+	unsigned long SD_Status = 0;
+	int retries = 5;
+	int timeout = BUSY_TIMEOUT;
+	int ret;
+
+	while(1) {
+		ret = SD_SLOT_SendCommand(pSlot, RspType1, CMD13, pSlot->rca);
+	  	if(ret == 0)
+	   	{
+	 		SD_Status = pSlot->ulResponse[0];
+	     		if((SD_Status & SD_STS_READY_FOR_DATA) && (SD_Status & SD_STS_CURR_STATE) != SD_STS_PRG ) {
+	      			break;
+		      	} else if( SD_Status & SD_STS_STATUS_MASK){
+		        	printf("[MMC]communication error is Ouccured\n");
+				return -1;
+			}
+		} else if(--retries < 0){
+			printf("[MMC] Failed to Send Device Status\n");
+			return ret;
+		}
+
+		if(timeout-- <= 0)
+			break;
+
+		udelay2(1000);
+	}
+
+	if(SD_Status & SD_STS_SWITCH_ERR )
+	{
+		printf("the SWITCH Command error is occured \n");
+		return -1;
+	}
+
+	if(timeout <= 0) {
+		printf("[MMC] Busy status of eMMC is not released.\n");
+		return -1;
+	}
+
+	return 0;
+}
 static void SD_SLOT_SetClockRate(PSD_SLOT_T pSlot)
 {
 	unsigned long ulTargetClock = SD_SLOT_SOURCE_CLOCK_IN_KHZ;
@@ -235,6 +279,9 @@ static int SD_SLOT_ClockOn(PSD_SLOT_T pSlot)
 	pSdSlotReg->usClockControl = pSlot->usSdClock;
 	while(!(pSdSlotReg->usClockControl&INTERNAL_CLOCK_STABLE));
 	pSdSlotReg->usClockControl = pSlot->usSdClock | SD_CLOCK_ENABLE;
+
+	// 2021.5.24. fix eMMC NCC Timing spec-out
+	udelay2(20);
 	return 0;
 }
 
@@ -366,11 +413,6 @@ static int SD_SLOT_WaitIntStatus(PSD_SLOT_T pSlot, unsigned short usIntStatus)
 	for(;;)
 	{
 		unsigned short usNormalIntStatus = pSdSlotReg->usNormalIntStatus;
-		if(usNormalIntStatus&usIntStatus)
-		{
-			pSdSlotReg->usNormalIntStatus = usIntStatus;
-			return 0;
-		}
 		if(usNormalIntStatus&HwSD_STS_ERR)
 		{
 			printf("\033[101m%s : Interrupt Error\033[0m\n", __func__);
@@ -395,6 +437,11 @@ static int SD_SLOT_WaitIntStatus(PSD_SLOT_T pSlot, unsigned short usIntStatus)
 		{
 			printf("%s: SD detection error!!\n", __func__);
 			return -1;
+		}
+		if(usNormalIntStatus&usIntStatus)
+		{
+			pSdSlotReg->usNormalIntStatus = usIntStatus;
+			return 0;
 		}
 	}
 }
@@ -428,8 +475,9 @@ static void _SD_SLOT_Complete(PSD_SLOT_T pSlot)
 {
 	PSDSLOTREG_T pSdSlotReg = (PSDSLOTREG_T)pSlot->pHwSdSlotReg;
 
-	if(pSlot->bw == 1)
-		SD_SLOT_ClockOff(pSlot);
+	// 2021.5.24. fix eMMC NCC Timing spec-out
+	//if(pSlot->bw == 1)
+	//	SD_SLOT_ClockOff(pSlot);
 
 	pSdSlotReg->usNormalIntStatus = NORMAL_INT_CDONE
 									| NORMAL_INT_TDONE
@@ -779,8 +827,8 @@ int SD_SLOT_SD_ResetCMD(PSD_SLOT_T pSlot, int *iResBuf, char *cPNMBuf, int * iRC
 **************************************************************************/
 int SD_SLOT_MMC_ResetCMD(PSD_SLOT_T pSlot, int *iResBuf, char *cPNMBuf, int * iRCABuf)
 {
-	int iRspValue;
-	unsigned char ucTrial=0;
+	unsigned long iRspValue = 0;
+	unsigned short usTrial = 0;
 
 	SD_SLOT_SendReset(pSlot,0);
 
@@ -796,10 +844,10 @@ int SD_SLOT_MMC_ResetCMD(PSD_SLOT_T pSlot, int *iResBuf, char *cPNMBuf, int * iR
 		if (ISONE(iRspValue, Hw31))
 			break;
 
-		if(ucTrial >= 100)
+		if(usTrial >= 1000)
 			return -1;
 		else
-			ucTrial++;
+			usTrial++;
 	}
 
 	// Check "Access mode"

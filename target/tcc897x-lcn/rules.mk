@@ -134,28 +134,12 @@ endif
 DEFINES += DRAM_DDR3
 endif
 
-ifeq ($(INCLUDE_LCD_HDMI_1920x720_12_3), true)
-CFLAGS += -DWIDE_LCD_DEFINE
-DEFINES += DEFAULT_DISPLAY_HDMI
-DEFINES += HDMI_1920X720
-TCC_HDMI_USE := 1
-DEFINES += DISPLAY_SPLASH_SCREEN_DIRECT=1
-
-else
-
-ifeq ($(INCLUDE_LCD_HDMI_960_1280), true) 
-CFLAGS += -DWIDE_LCD_DEFINE
-DEFINES += DEFAULT_DISPLAY_HDMI
-DEFINES += HDMI_1920X720
-TCC_HDMI_USE := 1
-DEFINES += DISPLAY_SPLASH_SCREEN_DIRECT=1
-else
-DEFINES += DEFAULT_DISPLAY_LCD
-DEFINES += FLD0800	  # 1024x600 
-TCC_HDMI_USE := 1
+ifeq ($(INCLUDE_LCD_REVERSED), true)
+DEFINES += INCLUDE_LCD_REVERSED
 endif
 
-endif
+DEFINES += DISPLAY_SPLASH_SCREEN_DIRECT=1
+TCC_HDMI_USE := 1
 
 ifeq ($(TCC_HDMI_USE), 1)
   DEFINES += TCC_HDMI_USE
@@ -293,7 +277,28 @@ ifeq ($(INCLUDE_FM1688), true)
 DEFINES += INCLUDE_FM1688=1
 endif
 
+#==================================================================
+# DDR 900 --> For One Binary(WIDE) Only 900Mhz is used
+#==================================================================
+#ifeq ($(INCLUDE_DDR900), true)
+#DEFINES += INCLUDE_DDR900=1
+#endif
 
+#==================================================================
+# for One Binary booting logo
+#==================================================================
+ifeq ($(MOBIS_GET_DATA_FROM_MICOM), 1)
+MODULES += \
+        target/tcc897x-lcn/mobis
+endif
+
+ifeq ($(FEATURE_GENESIS), true)
+	DEFINES += FEATURE_GENESIS
+else ifeq ($(PRODUCT_BRAND), hyundai)
+	DEFINES += PRODUCT_BRAND_HYUNDAI
+else ifeq($(PRODUCT_BRAND), kia)
+	DEFINES += PRODUCT_BRAND_KIA
+endif
 
 #==================================================================
 # MAX_SER_DES
@@ -302,6 +307,12 @@ ifeq ($(INCLUDE_MAX_SER_DES), true)
 DEFINES += INCLUDE_MAX_SER_DES=1
 endif
 
+#==================================================================
+# EXCLUDED_FROM_ONEBINARY
+#==================================================================
+ifeq ($(EXCLUDED_FROM_ONEBINARY), true)
+DEFINES += EXCLUDED_FROM_ONEBINARY=1
+endif
 
 #================================================================== 
 # U-Boot Features

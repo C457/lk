@@ -58,12 +58,29 @@ static time_t tick_interval;
 
 #define TIMER_REG(off)	*REG32(TCC_TIMER_BASE + (off))
 
+#define TIMER_MAX_NUM	6
+
 #define TIMER0		0x00
 #define TIMER1		0x10
 #define TIMER2		0x20
 #define TIMER3		0x30
 #define TIMER4		0x40
 #define TIMER5		0x50
+
+#define TIREQ		0x60
+#define TIREQ_TF5	0x1 << 13
+#define TIREQ_TF4	0x1 << 12
+#define TIREQ_TF3	0x1 << 11
+#define TIREQ_TF2	0x1 << 10
+#define TIREQ_TF1	0x1 << 9
+#define TIREQ_TF0	0x1 << 8
+#define TIREQ_TI5	0x1 << 5
+#define TIREQ_TI4	0x1 << 4
+#define TIREQ_TI3	0x1 << 3
+#define TIREQ_TI2	0x1 << 2
+#define TIREQ_TI1	0x1 << 1
+#define TIREQ_TI0	0x1 << 0
+
 
 #define TIMER_TCFG	0x00
 #define TIMER_TCNT	0x04
@@ -136,8 +153,49 @@ static void wait_for_timer_op(void)
 
 void platform_uninit_timer(void)
 {
+#ifndef USE_CM4_EARLY_CAM
 	writel(0x7fff, (HwTMR_BASE + 0x80));	/* stop the timer */
 	writel(0x00000000, (HwTMR_BASE + 0x98));
+#endif
+}
+
+void udelay2(unsigned usecs)
+{
+	usecs *= 3;
+	if (usecs > 0xFFFF)
+	{
+		dprintf(INFO, "\x1b[0;33m%d usecs is too large to set 16-bit counter\x1b[0m\n", usecs);
+		usecs = 0xFFFF;
+	}
+	TIMER_REG(TIMER3+TIMER_TCNT) = 0x0;
+	TIMER_REG(TIMER3+TIMER_TREF) = usecs;
+	TIMER_REG(TIMER3+TIMER_TCFG) |= 0x1;
+
+	while ( !(TIMER_REG(TIREQ) & TIREQ_TF3) );
+
+	TIMER_REG(TIREQ) &= ~TIREQ_TF3;
+	TIMER_REG(TIREQ) |= TIREQ_TI3;
+	TIMER_REG(TIMER3+TIMER_TCFG) &= ~0x1;
+}
+
+void mdelay2(unsigned msecs)
+{
+	msecs *= 375;
+	if (msecs > 0xFFFFF)
+	{
+		dprintf(INFO, "\x1b[0;33m%d msecs is too large to set 20-bit counter\x1b[0m\n", msecs);
+		msecs = 0xFFFFF;
+	}
+
+	TIMER_REG(TIMER4+TIMER_TCNT) = 0x0;	// timer4 cnt set to 0
+	TIMER_REG(TIMER4+TIMER_TREF) = msecs;
+	TIMER_REG(TIMER4+TIMER_TCFG) |= 0x1;	// timer4 enable
+
+	while ( !(TIMER_REG(TIREQ) & TIREQ_TF4) );
+
+	TIMER_REG(TIREQ) &= ~TIREQ_TF4;
+	TIMER_REG(TIREQ) |= TIREQ_TI4;
+	TIMER_REG(TIMER4+TIMER_TCFG) &= ~0x1;	// timer4 disable
 }
 
 void mdelay(volatile unsigned msecs)

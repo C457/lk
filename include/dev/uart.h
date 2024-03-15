@@ -34,5 +34,10 @@ void uart_flush_tx(int port);
 void uart_flush_rx(int port);
 void uart_init_port(int port, uint baud);
 
+#ifdef MOBIS_GET_DATA_FROM_MICOM
+#define MICOM_UART 2
+int uart_getc_ex(int port, int time);
+#endif
+
 #endif
 

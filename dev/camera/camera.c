@@ -250,30 +250,34 @@ void CM_LoadBinary(unsigned char * fw_data, unsigned int fw_size) {
 extern struct tcc_cif_parameters * parameters_data;
 
 void tcc_sync_parameters(void) {
-	struct lcd_panel *panel_info;
-	panel_info = tccfb_get_panel();
+//	struct lcd_panel *panel_info;
+//	panel_info = tccfb_get_panel();
 
 	// calculate pmap address
 	parameters_data->Lcdc_address0  = gPmap[PMAP_EARLYCAM_PREVIEW].pbase;
 	parameters_data->PGL_addr       = gPmap[PMAP_EARLYCAM_PGL].pbase;
 	parameters_data->Viqe_area      = gPmap[PMAP_EARLYCAM_VIQE].pbase;
+	parameters_data->Log_addr       = gPmap[PMAP_EARLYCAM_LOG].pbase;
 
-	// set width, height size
-	parameters_data->viocmg_info.early_cam_preview_width    = panel_info->xres;
-	parameters_data->viocmg_info.early_cam_preview_height   = panel_info->yres;
-
-	parameters_data->viocmg_info.early_cam_parking_line_width   = panel_info->xres;
-	parameters_data->viocmg_info.early_cam_parking_line_height  = panel_info->yres;
+    // Move below codes to sensor_if.c
+	//parameters_data->viocmg_info.early_cam_preview_width    = panel_info->xres;
+	//parameters_data->viocmg_info.early_cam_preview_height   = panel_info->yres;
+	//parameters_data->viocmg_info.early_cam_parking_line_width   = panel_info->xres;
+	//parameters_data->viocmg_info.early_cam_parking_line_height  = panel_info->yres;
 
 	dprintf(INFO, "parameters_data->size : %d \n", sizeof(struct tcc_cif_parameters));
-	dprintf(INFO, "earlycam PGL base addr : 0x%x 0x%x \n", \
-				parameters_data->PGL_addr,  gPmap[PMAP_EARLYCAM_PGL].pbase);
-	dprintf(INFO, "earlycam PREVIEW base addr : 0x%x 0x%x \n", \
-				parameters_data->Lcdc_address0, gPmap[PMAP_EARLYCAM_PREVIEW].pbase);
-	dprintf(INFO, "earlycam VIQE base addr : 0x%x 0x%x \n", \
-				parameters_data->Viqe_area, gPmap[PMAP_EARLYCAM_VIQE].pbase);
-	dprintf(INFO, "early view width : %d, early view height : %d \n", \
-	            parameters_data->viocmg_info.early_cam_preview_width, parameters_data->viocmg_info.early_cam_preview_height);
+	dprintf(INFO, "earlycam PGL base addr : 0x%x 0x%x (0x%x)\n", \
+				parameters_data->PGL_addr,  gPmap[PMAP_EARLYCAM_PGL].pbase, gPmap[PMAP_EARLYCAM_PGL].size);
+	dprintf(INFO, "earlycam PREVIEW base addr : 0x%x 0x%x (0x%x)\n", \
+				parameters_data->Lcdc_address0, gPmap[PMAP_EARLYCAM_PREVIEW].pbase, gPmap[PMAP_EARLYCAM_PREVIEW].size);
+	dprintf(INFO, "earlycam VIQE base addr : 0x%x 0x%x (0x%x)\n", \
+				parameters_data->Viqe_area, gPmap[PMAP_EARLYCAM_VIQE].pbase, gPmap[PMAP_EARLYCAM_VIQE].size);
+	dprintf(INFO, "earlycam LOG base addr : 0x%x 0x%x (0x%x)\n", \
+				parameters_data->Log_addr, gPmap[PMAP_EARLYCAM_LOG].pbase, gPmap[PMAP_EARLYCAM_LOG].size);
+//	dprintf(INFO, "early view width : %d, early view height : %d \n", \
+//	            parameters_data->viocmg_info.early_cam_preview_width, parameters_data->viocmg_info.early_cam_preview_height);
+
+//	memset((void *)parameters_data->Log_addr, 0, gPmap[PMAP_EARLYCAM_LOG].size);
 
 	memset((void *)SYNC_BASE_ADDR, 0, SYNC_BASE_SIZE);
 	memcpy((void *)SYNC_BASE_ADDR, parameters_data, sizeof(struct tcc_cif_parameters));

@@ -106,6 +106,18 @@ enum VideoFormat
 
     /** 1920x720@60Hz */
     v1920x720p_60Hz,    //37
+
+    /** 1920x720@60Hz */
+    v1920x720p_60Hz_10_25,    //38
+
+    /** 1920x720@60Hz */
+    v1920x720p_60Hz_12_3,    //39
+
+    /** 1280x720@60Hz */
+    v1280x720p_60Hz_8_0,    //40
+
+    /** 1920x720@60Hz */
+    v1920x720p_60Hz_10_25_STR,    //41
 #if defined(TELECHIPS)
 	max_video_formats,
 #endif
@@ -280,6 +292,16 @@ enum PHYFreq
 	PHY_FREQ_59_400,
 	/** 97.5 MHz pixel frequency */
 	PHY_FREQ_97_340,		//17
+	/** 94.0 MHz pixel frequency */
+	PHY_FREQ_94,		//18
+	/** 98.5 MHz pixel frequency */
+        PHY_FREQ_98_500,            //19
+	/** 64.0 MHz pixel frequency */
+        PHY_FREQ_64,            //20
+	/** 99.7 MHz pixel frequency */
+        PHY_FREQ_99_701,            //21
+	/** 97.34_STR MHz pixel frequency */
+        PHY_FREQ_97_340_STR,        //22
 
 };
 
@@ -438,12 +460,14 @@ static const lcdc_timimg_parms_t LCDCTimimgParams[] =
 
 //mobis first
   /* v1920x720p_60Hz       PIXEL_FREQ_97_340, */  //     { 0,  0,  0,  0,  0,  1,  0,  1,  0,   19 ,    1919,     79,     59 ,   0,  0,  0,     719,   56,  1,   0,   719,     56,  1,   /*1920x720p @ 60Hz     97.34MHz    */ },
-#ifdef WIDE_LCD_TIANMA 
-  /* TIANMA 10.25 */
-  /* v1920x720p_60Hz       PIXEL_FREQ_97_340, */       { 0,  0,  0,  0,  0,  1,  0,  1,  0,    19 ,   1919,     23,     19 ,   0,  0,   3,     719,   17,  17,    3,   719,     17, 17,    /*1920x720p @ 60Hz     97.34MHz    */ },
-#elif defined(HDMI_1920_720_12_3)
 	/* v1920x720p_60Hz       PIXEL_FREQ_97_340, */       { 0,  0,  0,  0,  0,  1,  0,  1,  0,    19 ,   1919,     69,     69 ,   0,  0,   3,     719,   17,  17,    3,   719,     17, 17,    /*1920x720p @ 60Hz     97.34MHz    */ },
-#endif
+
+ /* v1920x720p_60Hz       PIXEL_FREQ_97_340, */       { 0,  0,  0,  0,  0,  1,  0,  1,  0,    19 ,   1919,     69,     69 ,   0,  0,   3,     719,   17,  17,    3,   719,     17, 17,    },
+ /* v1920x720p_60Hz_12_3       PIXEL_FREQ_94, */       { 0,  0,  0,  0,  0,  1,  0,  1,  0,    31 ,   1919,     159,     49 ,   0,  0,   4,     719,   27,  14,    4,   719,     27, 14,    },
+ /* v1280x720p_60Hz_8_0       PIXEL_FREQ_64, */       { 0,  0,  0,  0,  0,  1,  0,  1,  0,    31 ,   1279,     79,     47 ,   0,  0,   4,     719,   12,  4,    4,   719, 12, 4,    },
+ /* v1920x720p_60Hz       PIXEL_FREQ_97_340_STR, */   { 0,  0,  0,  0,  0,  1,  0,  1,  0,    19 ,   1919,     69,     69 ,   0,  0,   3,     719,   17,  17,    3,   719,     17, 17,    },
+
+
 
 
 };
@@ -454,7 +478,7 @@ static const struct hdmi_video_mode_list_t {
 	unsigned int			width;
 	unsigned int			height;
 	unsigned char			vfmt_str[32];
-} gRefHdmiVideoModeList[16] = 
+} gRefHdmiVideoModeList[20] =
 {
 /* [ 0] */ { v1920x1080p_60Hz, HDMI_PIXEL_RATIO_16_9,  1920,   1080,   "1920x1080P 60Hz [16:9]"  },
 /* [ 1] */ { v1920x1080p_50Hz, HDMI_PIXEL_RATIO_16_9,  1920,   1080,   "1920x1080P 50Hz [16:9]"  },
@@ -471,7 +495,12 @@ static const struct hdmi_video_mode_list_t {
 /* [12] */ { v720x576i_50Hz  , HDMI_PIXEL_RATIO_16_9,   720,    576,   "  720x576I 50Hz [16:9]"  },
 /* [13] */ { v720x576i_50Hz  , HDMI_PIXEL_RATIO_4_3 ,   720,    576,   "  720x576I 50Hz [ 4:3]"  },
 /* [14] */ { v640x480p_60Hz  , HDMI_PIXEL_RATIO_4_3 ,   640,    480,   "  640x480P 60Hz [ 4:3]"  },
-/* [15] */ { v1920x720p_60Hz  , HDMI_PIXEL_RATIO_4_3 ,  1920,  720,   " 1920x720 60Hz [ 8:3]"  }
+/* [15] */ { v1920x720p_60Hz  , HDMI_PIXEL_RATIO_4_3 ,  1920,  720,   " 1920x720 60Hz [ 8:3]"  },
+/* [16] */ { v1920x720p_60Hz_10_25  , HDMI_PIXEL_RATIO_4_3 ,  1920,  720,   " 1920x720 60Hz [ 8:3]"  },
+/* [17] */ { v1920x720p_60Hz_12_3  , HDMI_PIXEL_RATIO_4_3 ,  1920,  720,   " 1920x720 60Hz [ 8:3]"  },
+/* [18] */ { v1280x720p_60Hz_8_0  , HDMI_PIXEL_RATIO_4_3 ,  1280,  720,   " 1920x720 60Hz [ 8:3]"  },
+/* [19] */ { v1920x720p_60Hz_10_25_STR  , HDMI_PIXEL_RATIO_4_3 ,  1920,  720,   " 1920x720 60Hz [ 8:3]"  }
+
 
 };
 #endif /* __HDMI_DEVICE_VIDEO_PARAMS__ */

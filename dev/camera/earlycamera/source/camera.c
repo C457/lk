@@ -115,6 +115,11 @@ void tcc_cif_parameters_dump(void) {
 	printk("early_cam_parking_line_width = %d\r\n", Viocmg_info->early_cam_parking_line_width);
 	printk("early_cam_parking_line_height = %d\r\n", Viocmg_info->early_cam_parking_line_height);
 	printk("early_cam_parking_line_format = %d\r\n", Viocmg_info->early_cam_parking_line_format);
+
+    printk("early_cam_bg_x = %d\r\n", Viocmg_info->early_cam_bg_x);
+    printk("early_cam_bg_y = %d\r\n", Viocmg_info->early_cam_bg_y);
+    printk("early_cam_bg_width = %d\r\n", Viocmg_info->early_cam_bg_width);
+    printk("early_cam_bg_height = %d\r\n", Viocmg_info->early_cam_bg_height);
 }
 
 unsigned int cm4_get_camera_type(void) {
@@ -128,6 +133,7 @@ void tcc_cif_sync_parameter(void) {
 	CM4SyncParameters = (struct tcc_cif_parameters *)SYNC_BASE_ADDR;
 	Viocmg_info = (struct viocmg_info *)(&CM4SyncParameters->viocmg_info);
 
+	set_log_mem_info(CM4SyncParameters->Log_addr);
 //	tcc_cif_parameters_dump();
 }
 
@@ -198,7 +204,7 @@ int tcc_cif_set_rdma(VIOC_RDMA* pRDMA, unsigned int base_addr, int width, int he
 	VIOC_RDMA_SetImageBase(pRDMA, base_addr, (unsigned int)NULL, (unsigned int)NULL);
 
 	// Because of using YCbCr color space LUT formala to set VIN_LUT
-	if(cm4_get_camera_type() == CAM_TYPE_LVDS) {
+	if(cm4_get_camera_type() == CAM_TYPE_LVDS || cm4_get_camera_type() == CAM_TYPE_ADAS_PRK || cm4_get_camera_type() == CAM_TYPE_DVRS_RVM) {
 		VIOC_RDMA_SetImageR2YMode(pRDMA, 2);
 		VIOC_RDMA_SetImageR2YEnable(pRDMA, 1);
 	}
@@ -237,7 +243,7 @@ int tcc_cif_set_wmix(VIOC_WMIX * pWMIX, int width, int height) {
 #endif
 
 	// Because of using YCbCr color space LUT formala to set VIN_LUT
-	if(cm4_get_camera_type() == CAM_TYPE_LVDS) {
+	if(cm4_get_camera_type() == CAM_TYPE_LVDS || cm4_get_camera_type() == CAM_TYPE_ADAS_PRK || cm4_get_camera_type() == CAM_TYPE_DVRS_RVM) {
 		key_Y	=  0.213*(double)key_R +  0.715*(double)key_G + 0.072*(double)key_B;
 		key_Cb	= -0.117*(double)key_R + -0.394*(double)key_G + 0.511*(double)key_B + (double)128;
 		key_Cr	=  0.511*(double)key_R -  0.464*(double)key_G - 0.047*(double)key_B + (double)128;
@@ -249,19 +255,30 @@ int tcc_cif_set_wmix(VIOC_WMIX * pWMIX, int width, int height) {
 
 	if(Viocmg_info->feature_early_view_use_parking_line && pgl_enable) {
 		// Because of using YCbCr color space LUT formala to set VIN_LUT
-		if(cm4_get_camera_type() == CAM_TYPE_LVDS) {
+		if(cm4_get_camera_type() == CAM_TYPE_LVDS || cm4_get_camera_type() == CAM_TYPE_ADAS_PRK || cm4_get_camera_type() == CAM_TYPE_DVRS_RVM) {
 			VIOC_WMIX_SetChromaKey(pWMIX, layer, ON, key_Y, key_Cb, key_Cr, key_mask_R, key_mask_G, key_mask_B);
 		}
 		else {
 			VIOC_WMIX_SetChromaKey(pWMIX, layer, ON, key_R, key_G, key_B, key_mask_R, key_mask_G, key_mask_B);
 		}
 		VIOC_WMIX_SetPosition(pWMIX, layer+1, Viocmg_info->early_cam_parking_line_x, Viocmg_info->early_cam_parking_line_y);
+		//VIOC_WMIX_SetPosition(pWMIX, 0, Viocmg_info->early_cam_preview_x, Viocmg_info->early_cam_preview_y); // this should be added for 140 pixels black screen left side
 		VIOC_CONFIG_WMIXPath(WMIX50, 1);
 	}
-	else
-		VIOC_CONFIG_WMIXPath(WMIX50, 0);
+	// digital type - YUV type
+	else if(cm4_get_camera_type() == CAM_TYPE_ADAS_PRK || cm4_get_camera_type() == CAM_TYPE_LVDS || cm4_get_camera_type() == CAM_TYPE_DVRS_RVM ) {
+		VIOC_WMIX_SetPosition(pWMIX, 0, Viocmg_info->early_cam_preview_x, Viocmg_info->early_cam_preview_y);
+		VIOC_WMIX_SetBGColor(pWMIX, 0x0,0x7F, 0x7F, 0); // Black screen for Digital type camera
+		VIOC_CONFIG_WMIXPath(WMIX50, 1);
+	}
+	// Analog type - RGB type
+	else {
+		VIOC_WMIX_SetPosition(pWMIX, 0, Viocmg_info->early_cam_preview_x, Viocmg_info->early_cam_preview_y);
+		VIOC_WMIX_SetBGColor(pWMIX, 0x00,0x00, 0x00, 0x00); // Black screen for Analog rvm camera
+		VIOC_CONFIG_WMIXPath(WMIX50, 1);
+	}
 
-	VIOC_WMIX_SetUpdate(pWMIX);
+    VIOC_WMIX_SetUpdate(pWMIX);
 
 	return 0;
 }
@@ -275,20 +292,21 @@ int tcc_cif_set_vin(void) {
 	VIOC_VIN_SetImageSize(pVINBase, CM4SyncParameters->Cam_preview_w, CM4SyncParameters->Cam_preview_h);
 	//2017.12.22 - LVDS SVM Display Timing Fixed. Horizontal Blank(128), Vertical Blank(4)
 	//2018.06.15 - LVDS SVM PCLK Changed(2208 -> 2528). Horizontal Blank(128+320 = 448)
-	if(CM4SyncParameters->Camera_type == CAM_TYPE_LVDS)
+	if(CM4SyncParameters->Camera_type == CAM_TYPE_LVDS || CM4SyncParameters->Camera_type == CAM_TYPE_DVRS_RVM)
 	{
-		if(gpio_get(TCC_GPB(19)))
+//		if(gpio_get(TCC_GPB(19)))
 			VIOC_VIN_SetImageOffset(pVINBase, 448, 4, 0);
-		else
-			VIOC_VIN_SetImageOffset(pVINBase, 128, 4, 0);
-	}
-	else
+//		else
+//			VIOC_VIN_SetImageOffset(pVINBase, 128, 4, 0);
+	} else if (CM4SyncParameters->Camera_type == CAM_TYPE_ADAS_PRK) {
+        VIOC_VIN_SetImageOffset(pVINBase, 288, 0, 0);
+    } else
 		VIOC_VIN_SetImageOffset(pVINBase, 0, 0, 0);
 	VIOC_VIN_SetImageCropSize(pVINBase, CM4SyncParameters->Cam_preview_w, CM4SyncParameters->Cam_preview_h);
 	VIOC_VIN_SetImageCropOffset(pVINBase, 0, 0);
 	VIOC_VIN_SetY2RMode(pVINBase, 2);
 	// Because of using YCbCr color space LUT formala to set VIN_LUT
-	if(cm4_get_camera_type() == CAM_TYPE_LVDS) {
+	if(cm4_get_camera_type() == CAM_TYPE_LVDS || cm4_get_camera_type() == CAM_TYPE_ADAS_PRK || cm4_get_camera_type() == CAM_TYPE_DVRS_RVM) {
 		VIOC_VIN_SetY2REnable(pVINBase, 0);
 		VIOC_VIN_SetLUT(pVINBase, &(pVINBase->uVIN_LUT_C0));
 		VIOC_VIN_SetLUTEnable(pVINBase, ON, ON, ON);
@@ -417,7 +435,7 @@ void tcc_cif_set_wdma()
 	VIOC_WDMA_SetImageBase(pWDMABase, 	Image_info.addr0,Image_info.addr1, Image_info.addr2);
 
 	// Because of using YCbCr color space LUT formala to set VIN_LUT
-	if(cm4_get_camera_type() == CAM_TYPE_LVDS) {
+	if(cm4_get_camera_type() == CAM_TYPE_LVDS || cm4_get_camera_type() == CAM_TYPE_ADAS_PRK || cm4_get_camera_type() == CAM_TYPE_DVRS_RVM) {
 		VIOC_WDMA_SetImageY2RMode(pWDMABase, 2);
 		VIOC_WDMA_SetImageY2REnable(pWDMABase, 1);	
 	}
@@ -449,7 +467,7 @@ void tcc_cif_disable_async_fifo(void) {
 }
 
 void tcc_cif_start_stream(void) {
-	unsigned int	offset = 0, idxBuf = 0;
+	unsigned int	offset = 0, idxBuf = 0, bgr_width = 0;
 
 	//default path
 	//preview path	: vin00		-	scaler0/viqe	-	wmix05	-	wdma05
@@ -471,14 +489,14 @@ void tcc_cif_start_stream(void) {
 	}
 
 	// allocate preview memory
-	offset = Viocmg_info->early_cam_preview_width * Viocmg_info->early_cam_preview_height * 4;
+	offset = Viocmg_info->early_cam_bg_width * Viocmg_info->early_cam_bg_height * 4;
 	for(idxBuf=0; idxBuf < PREVIEW_BUFFER_NUMBER; idxBuf++) {
 		addrPreview[idxBuf] = CM4SyncParameters->Lcdc_address0 + (offset * idxBuf);
 		log("addrPreview[%d] = 0x%08x\n", idxBuf, addrPreview[idxBuf]);
 	}
 
 	// clear 1st memory.
-	memset((void *)CM4SyncParameters->Lcdc_address0, 0, Viocmg_info->early_cam_preview_width * Viocmg_info->early_cam_preview_height * 4);
+	memset((void *)CM4SyncParameters->Lcdc_address0, 0, Viocmg_info->early_cam_bg_width * Viocmg_info->early_cam_bg_height * 4);
 
 	// reset vioc component
 	tcc_cif_reset_vioc_path();
@@ -498,8 +516,8 @@ void tcc_cif_start_stream(void) {
 	Image_info.addr2 = CM4SyncParameters->Lcdc_address2;
 	Image_info.fmt = CM4SyncParameters->Lcdc_format;
 #endif
-	Image_info.Frame_width = Viocmg_info->early_cam_preview_width;
-	Image_info.Frame_height = Viocmg_info->early_cam_preview_height;
+	Image_info.Frame_width = Viocmg_info->early_cam_bg_width;
+	Image_info.Frame_height = Viocmg_info->early_cam_bg_height;
 	Image_info.Image_width = Viocmg_info->early_cam_parking_line_width;
 	Image_info.Image_height = Viocmg_info->early_cam_parking_line_height;
 	Image_info.offset_x = Viocmg_info->early_cam_preview_x;
@@ -539,20 +557,13 @@ void tcc_cif_start_stream(void) {
 	if(Viocmg_info->early_cam_preview_width != CM4SyncParameters->Cam_preview_w ||
 		Viocmg_info->early_cam_preview_height != CM4SyncParameters->Cam_preview_h) {
 		// set SCaler
-		if(cm4_get_camera_type() == CAM_TYPE_LVDS) {
-			tcc_camera_set_scaler(Viocmg_info->early_cam_preview_crop_x, Viocmg_info->early_cam_preview_crop_y,
-					Viocmg_info->early_cam_preview_additional_width, Viocmg_info->early_cam_preview_additional_height,
-					Viocmg_info->early_cam_preview_width, Viocmg_info->early_cam_preview_height);
-		}
-		else {
-			tcc_camera_set_scaler(Viocmg_info->early_cam_preview_crop_x, Viocmg_info->early_cam_preview_crop_y,
-					Viocmg_info->early_cam_preview_additional_width, Viocmg_info->early_cam_preview_additional_height,
-					Viocmg_info->early_cam_preview_width - 640, Viocmg_info->early_cam_preview_height);
-		}
+		tcc_camera_set_scaler(Viocmg_info->early_cam_preview_crop_x, Viocmg_info->early_cam_preview_crop_y,
+				Viocmg_info->early_cam_preview_additional_width, Viocmg_info->early_cam_preview_additional_height,
+				Viocmg_info->early_cam_preview_width, Viocmg_info->early_cam_preview_height);		
 	}
 
 	// set WMIXer
-	tcc_cif_set_wmix(pWMIXBase, Viocmg_info->early_cam_preview_width, Viocmg_info->early_cam_preview_height);
+	tcc_cif_set_wmix(pWMIXBase, Viocmg_info->early_cam_bg_width, Viocmg_info->early_cam_bg_height);
 
 	// set WDMA
 	tcc_cif_set_wdma();
@@ -584,13 +595,14 @@ void tcc_cif_stop_stream(void) {
 	// disable WDMA
 	VIOC_WDMA_SetIreqMask(pWDMABase, VIOC_WDMA_IREQ_ALL_MASK, ON);	// disable WDMA interrupt
 	VIOC_WDMA_SetImageDisable(pWDMABase);
-	for(idxLoop=0; idxLoop<1000; idxLoop++) {
+	//2019.09.20 - https://tims.telechips.com:8443/browse/IM367A-1067?filter=-2 -  1000ms -> 50ms
+	for(idxLoop=0; idxLoop<10; idxLoop++) {
 		if(pWDMABase->uIRQSTS.nREG & VIOC_WDMA_IREQ_EOFR_MASK)
 			break;
 		else
 			log("[%02d] WDMA: %p, CTRL: 0x%08x, STATUS: 0x%08x\n", idxLoop, pWDMABase, \
 				(unsigned)pWDMABase->uCTRL.nREG, (unsigned)pWDMABase->uIRQSTS.nREG);
-		mdelay(1);
+		mdelay(5);
 	}
 
 	// disable WMIX, but don't care
@@ -625,12 +637,13 @@ void tcc_cif_stop_stream(void) {
 
 int tcc_cif_wdma_counter(void) {
 	volatile unsigned int prev_addr, curr_addr;
-	volatile int nCheck, idxCheck, delay = 10;
+	volatile int nCheck, idxCheck, delay = 3;
 
 	curr_addr = pWDMABase->uCBASE;
 	mdelay(delay);
 
-	nCheck = 50;
+	//2018.11.13 - Change recovery check delay(500ms -> 12ms), same as D-Audio/GEN5 platform.
+	nCheck = 4;
 	for(idxCheck=0; idxCheck<nCheck; idxCheck++) {
 		prev_addr = curr_addr;
 		mdelay(delay);
@@ -706,45 +719,46 @@ void tcc_cif_vioc_register_dump(void) {
 
 	struct reg_test regList[] = {
 	//	{ (unsigned int *)HwVIOC_RDMA16,		12 },
-		{ (unsigned int *)HwVIOC_VIN00, 		16 },
-		{ (unsigned int *)HwVIOC_SC0,			 8 },
-		{ (unsigned int *)HwVIOC_WMIX5, 		28 },
-		{ (unsigned int *)HwVIOC_WDMA05,		18 },
+		{ (unsigned int *)HwVIOC_VIN00+10, 		 4 },
+//		{ (unsigned int *)HwVIOC_SC0,			 8 },
+//		{ (unsigned int *)HwVIOC_WMIX5, 		28 },
+		{ (unsigned int *)HwVIOC_WDMA05+4,		 1 },
 //		{ (unsigned int *)HwVIOC_RDMA00,		12 },
-		{ (unsigned int *)HwVIOC_RDMA01,		12 },
-		{ (unsigned int *)HwVIOC_RDMA02,		12 },
+//		{ (unsigned int *)HwVIOC_RDMA01,		12 },
+//		{ (unsigned int *)HwVIOC_RDMA02,		12 },
 //		{ (unsigned int *)HwVIOC_RDMA03,		12 },
-		{ (unsigned int *)HwVIOC_WMIX0, 		28 },
+//		{ (unsigned int *)HwVIOC_WMIX0, 		28 },
 //		{ (unsigned int *)HwVIOC_RDMA04,		12 },
 //		{ (unsigned int *)HwVIOC_RDMA05,		12 },
 //		{ (unsigned int *)HwVIOC_RDMA06,		12 },
 //		{ (unsigned int *)HwVIOC_RDMA07,		12 },
 //		{ (unsigned int *)HwVIOC_WMIX1, 		28 },
 //		{ (unsigned int *)HwVIOC_VIQE0, 		18 },
-		{ (unsigned int *)0x7238000c,	 		8 },
-		{ (unsigned int *)0x7200a040,	 		28 },
-		{ (unsigned int *)0x7200a054, 			28 },
-		{ (unsigned int *)(0x74200000+GPIO_PORTD),			16 },
+//		{ (unsigned int *)0x7238000c,	 		8 },
+//		{ (unsigned int *)0x7200a040,	 		28 },
+//		{ (unsigned int *)0x7200a054, 			28 },
+//		{ (unsigned int *)(0x74200000+GPIO_PORTD),			16 },
 	};
 
 	unsigned int * addr;
-	unsigned int reg, idxLoop, nReg, idxReg;
+	unsigned int reg, idxLoop, nReg, idxReg, bufcnt = 0;
+	unsigned char logbuf[50];
 
-	printk("\n\n");
+//	printk("\n\n");
 	for(idxLoop=0; idxLoop<sizeof(regList)/sizeof(regList[0]); idxLoop++) {
 		addr	= regList[idxLoop].reg;
 		nReg	= regList[idxLoop].cnt;
+		bufcnt	= 0;
 
 		for(idxReg=0; idxReg<nReg; idxReg++) {
 			if((idxReg%4) == 0)
-				printk("\n%08x: ", (unsigned int)(addr + idxReg));
+				bufcnt += sprintf(logbuf + bufcnt, "%08x: ", (unsigned int)(addr + idxReg));
 
 			REGREAD((unsigned int)(addr + idxReg), reg);
-			printk("%08x ", reg);
+			bufcnt += sprintf(logbuf + bufcnt, "%08x ", reg);
 		}
-		printk("\n");
+		printk("%s\n", logbuf);
 	}
-	printk("\n\n");
 }
 
 void tcc_cif_ie_lut(void) {
@@ -760,12 +774,13 @@ void tcc_cif_ie_lut(void) {
 	const int SATURATION_RANGE = 4; // -X ~ +X
 	const int CONTRAST_RANGE = 4; // -X ~ +X
 
+	//2018.10.04 - Default Color Change (127->122)
 	if (_video_brightness < 0 || _video_brightness > 255)
-		_video_brightness = 127;
+		_video_brightness = 122;
 	if (_video_contrast < 0 || _video_contrast > 255)
-		_video_contrast = 127;
+		_video_contrast = 122;
 	if (_video_saturation < 0 || _video_saturation > 255)
-		_video_saturation = 127;
+		_video_saturation = 122;
 
 	for (i = 0; i < 256; i++)
 	{
@@ -806,7 +821,7 @@ void tcc_cif_ie_lut(void) {
 
 		//VPRINTK("%s count: %d rgb:0x%2x\n", __func__, i, rgb[i]);
 	}
-	printk("%s _video_brightness:%d  _video_contrast:%d  _video_saturation:%d \n",
+	dprintf(SPEW, "%s _video_brightness:%d  _video_contrast:%d  _video_saturation:%d \n",
 			__func__, _video_brightness, _video_contrast, _video_saturation);
 
 	VIOC_VIN_SetLUT_by_table(pVINBase, rgb);

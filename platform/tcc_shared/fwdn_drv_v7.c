@@ -72,6 +72,9 @@ static unsigned int fwdndBuf[Tbuffersize/4];
 //		Global Variables
 //
 //==============================================================
+#if !defined(CONFIG_TCC_CODESONAR_BLOCKED)
+static unsigned char gFWDN_FirmwareStorage;
+#else
 static const unsigned char gFWDN_FirmwareStorage		=
 	#if _EMMC_BOOT
 		FWDN_DISK_TRIFLASH
@@ -85,6 +88,7 @@ static const unsigned char gFWDN_FirmwareStorage		=
 		#endif
 	#endif
 ;
+#endif
 
 unsigned int					g_uiFWDN_OverWriteSNFlag;
 unsigned int					g_uiFWDN_WriteSNFlag;
@@ -281,18 +285,27 @@ int FWDN_DRV_SessionStart(void)
 }
 
 int FWDN_DRV_SessionEnd(unsigned int bSuccess)
-{  
-	if (!target_is_emmc_boot())
+{
+	int ret;
+#if _EMMC_BOOT
+	//if (!target_is_emmc_boot())
 		NAND_RO_Area_Flush_WriteCache(0);
-
-	if(bSuccess)
-		FWDN_TRACE("===== FWDN Session End! =====\n");
-	else
-		FWDN_TRACE("===== FWDN Session is Failed!=====\n");
+#endif /* _EMMC_BOOT */
 
 	s_FWDN_DRV_SessionFlag = 0xFFFFFFFF;
 
-	return TRUE;
+	if(bSuccess)
+	{
+		FWDN_TRACE("===== FWDN Session End! =====\n");
+		ret = TRUE;
+	}
+	else
+	{
+		FWDN_TRACE("===== FWDN Session is Failed!=====\n");
+		ret = FALSE;
+	}
+
+	return ret;
 }
 
 static void FWDN_DRV_NAND_ProgressHandler( unsigned int uiCurrent, unsigned int uiTotal )
@@ -307,6 +320,16 @@ int FWDN_DRV_Init(unsigned int bmFlag, const FXN_FWDN_DRV_Progress fxnFwdnDrvPro
 {
 	int res = 0;
 
+#ifdef _EMMC_BOOT
+	gFWDN_FirmwareStorage =	FWDN_DISK_TRIFLASH;
+#elif SNOR_BOOT_INCLUDE
+	gFWDN_FirmwareStorage =	FWDN_DISK_SNOR;
+#elif HDD_BOOT_INCLUDE
+	gFWDN_FirmwareStorage =	FWDN_DISK_NOR;
+#else
+	gFWDN_FirmwareStorage =	FWDN_DISK_NAND;
+#endif
+
 	g_uiFWDN_OverWriteSNFlag = 0;
 
 	gfxnFWDN_DRV_Progress = fxnFwdnDrvProgress;
@@ -316,22 +339,24 @@ int FWDN_DRV_Init(unsigned int bmFlag, const FXN_FWDN_DRV_Progress fxnFwdnDrvPro
 		return -1;
 	}
 
-	if (target_is_emmc_boot()) {
+#if _EMMC_BOOT
+	//if (target_is_emmc_boot())
+	{
 		if(DISK_Ioctl(DISK_DEVICE_TRIFLASH, DEV_INITIALIZE, NULL ) < 0 ) {
 			FWDN_DRV_SetErrorCode(ERR_FWDN_DRV_IOCTRL_DEV_INITIALIZE);
 			res = -1;
 		}
 
 		if( bmFlag & FWDN_DEVICE_INIT_BITMAP_LOW_FORMAT ) {
-#if _EMMC_BOOT
 			if( erase_emmc(0, 0, 1) )
 				printf("eMMC low format error has occurred!\n");
 			else
 				printf("eMMC erasing completed!\n");
-#endif
 		}
 	}
-	else {
+	//else
+#else /* _EMMC_BOOT */
+	{
 		if(bmFlag & FWDN_DEVICE_INIT_BITMAP_DEBUG_LEVEL_FORMAT_MASK) {
 			switch(bmFlag&FWDN_DEVICE_INIT_BITMAP_DEBUG_LEVEL_FORMAT_MASK) {
 				case FWDN_DEVICE_INIT_BITMAP_DEBUG_LEVEL_FORMAT_ERASE_ONLY:
@@ -364,6 +389,7 @@ int FWDN_DRV_Init(unsigned int bmFlag, const FXN_FWDN_DRV_Progress fxnFwdnDrvPro
 			}
 		}
 	}
+#endif /* _EMMC_BOOT */
 
 	return res;
 }
@@ -417,14 +443,22 @@ pFWDN_DEVICE_INFORMATION FWDN_DRV_GetDeviceInfo(void)
 			else
 				FWDN_DeviceInformation.DevSerialNumberType = SN_NOT_EXIST;
 			break;
+#ifdef _EMMC_BOOT
 		case FWDN_DISK_TRIFLASH:
 			fwdn_mmc_get_serial_num();
 			break;
+#endif
+#ifdef HDD_BOOT_INCLUDE
 		case FWDN_DISK_HDD:
 			FwdnGetNorSerial();
 			break;
+#endif
+#ifdef SNOR_BOOT_INCLUDE
 		case FWDN_DISK_SNOR:
 			FwdnGetSerialNorSerial();
+			break;
+#endif
+		default:
 			break;
 	}
 
@@ -432,7 +466,9 @@ pFWDN_DEVICE_INFORMATION FWDN_DRV_GetDeviceInfo(void)
 	for(i=0;i<FWDN_AREA_LIST_MAX;i++)
 		_loc_register_area(i,"",0);
 
-	if (target_is_emmc_boot()) {
+#if _EMMC_BOOT
+	//if (target_is_emmc_boot())
+	{
 		unsigned long 	ulDataTotalSector;
 		unsigned long	ulHiddenCount;
 
@@ -443,6 +479,9 @@ pFWDN_DEVICE_INFORMATION FWDN_DRV_GetDeviceInfo(void)
 			stDiskHidden.ulTotalSector = 0;
 			DISK_Ioctl(DISK_DEVICE_TRIFLASH, DEV_GET_HIDDEN_SIZE, (void *)&stDiskHidden);
 
+#if !defined(CONFIG_TCC_CODESONAR_BLOCKED)
+#else
+			/* Original Code */
 			if(stDiskHidden.ulTotalSector) {
 				_loc_register_area(
 								nDisk++,
@@ -450,6 +489,7 @@ pFWDN_DEVICE_INFORMATION FWDN_DRV_GetDeviceInfo(void)
 								stDiskHidden.ulTotalSector
 				);
 			}
+#endif /* !defined(CONFIG_TCC_CODESONAR_BLOCKED) */
 		}
 
 		//SD data area total size
@@ -470,7 +510,9 @@ pFWDN_DEVICE_INFORMATION FWDN_DRV_GetDeviceInfo(void)
 
 		);
 	}
-	else {
+	//else
+#else /* _EMMC_BOOT */
+	{
 		for(i=0; i<NAND_Area_GetCount(0);i++) {
 			unsigned int uiTotalSector = NAND_Area_GetTotalSectorCount(0, i);
 			if(uiTotalSector != 0) {
@@ -482,6 +524,7 @@ pFWDN_DEVICE_INFORMATION FWDN_DRV_GetDeviceInfo(void)
 			}
 		}
 	}
+#endif /* _EMMC_BOOT */
 
 #if defined(TZOW_INCLUDE)
 	_loc_register_area(nDisk++, FWDN_OTP_DAT1_AREA_NAME, 0);
@@ -504,14 +547,22 @@ int	FWDN_DRV_SerialNumberWrite(unsigned char *serial, unsigned int overwrite)
 		case FWDN_DISK_NAND:
 			res = FwdnSetNandSerial( serial, overwrite);
 			break;
+#ifdef _EMMC_BOOT
 		case FWDN_DISK_TRIFLASH:
 			res = FwdnSetBootSDSerial( serial, overwrite);
 			break;
+#endif
+#ifdef HDD_BOOT_INCLUDE
 		case FWDN_DISK_HDD:
 			res = FwdnSetNorSerial( serial, overwrite);
 			break;
+#endif
+#ifdef SNOR_BOOT_INCLUDE
 		case FWDN_DISK_SNOR:
 			res = FwdnSetSerialFlashSerial( serial, overwrite);
+			break;
+#endif
+		default:
 			break;
 	}
 
@@ -535,8 +586,10 @@ int FWDN_DRV_FirmwareWrite(unsigned int fwSize, FXN_FWDN_DRV_FirmwareWrite_ReadF
 		case FWDN_DISK_NAND:
 		{
 			unsigned char *pucRomBuffer = (unsigned char*)FWUG_GetTempBuffer(fwSize);
+#if defined(NKUSE) || defined(__KERNEL__)
 			if(pucRomBuffer == NULL)
 				return ERR_FWUG_FAIL_MEMORY_ALLOCATION;
+#endif /* defined(NKUSE) || defined(__KERNEL__) */
 #if defined(OTP_UID_INCLUDE)
 			return 	FwdnWriteNandFirmware(TARGET_ADDR, SECURE_LK_SIZE);
 #else
@@ -545,6 +598,7 @@ int FWDN_DRV_FirmwareWrite(unsigned int fwSize, FXN_FWDN_DRV_FirmwareWrite_ReadF
 			return 	FwdnWriteNandFirmware(pucRomBuffer,fwSize);
 #endif
 		}
+#ifdef _EMMC_BOOT
 		case FWDN_DISK_TRIFLASH:
 #if defined(TCC_NSK_ENABLE)
 			ret = fwdn_mmc_update_secure_bootloader( fwSize, 0 );
@@ -557,11 +611,18 @@ int FWDN_DRV_FirmwareWrite(unsigned int fwSize, FXN_FWDN_DRV_FirmwareWrite_ReadF
 			ret = fwdn_mmc_update_bootloader( fwSize, 1 );
 #endif
 			return ret;
+#endif
+#ifdef HDD_BOOT_INCLUDE
 		case FWDN_DISK_HDD:
 		case FWDN_DISK_NOR:
 			return	FwdnWriteNorFlashFirmware(fwSize);
+#endif
+#ifdef SNOR_BOOT_INCLUDE
 		case FWDN_DISK_SNOR:
 			return	FwdnWriteSerialNorFirmware(fwSize);
+#endif
+		default:
+			break;
 	}
 
 	return	0;
@@ -576,7 +637,9 @@ int _loc_AreaRead(char *name, unsigned int lba, unsigned short nSector, void *bu
 {
 	unsigned int i;
 
-	if (target_is_emmc_boot()) {
+#if _EMMC_BOOT
+	//if (target_is_emmc_boot())
+	{
 		ioctl_diskrwpage_t rwHiddenPage;
 		
 		if( _loc_strcmp(FWDN_SD_DATA_AREA_NAME,name) == 0 
@@ -596,7 +659,9 @@ int _loc_AreaRead(char *name, unsigned int lba, unsigned short nSector, void *bu
 			}
 		}
 	}
-	else {
+	//else
+#else /* _EMMC_BOOT */
+	{
 		for(i=0 ; i<NAND_Area_GetCount(0); i++) {
 #if defined(OTP_UID_INCLUDE)
 			if (_loc_strcmp(FWDN_FAT_ONLY_DATA_AREA_NAME,name) == 0)
@@ -606,6 +671,7 @@ int _loc_AreaRead(char *name, unsigned int lba, unsigned short nSector, void *bu
 				return NAND_Area_ReadSector(0, i, lba, nSector, buff);
 		}
 	}
+#endif /* _EMMC_BOOT */
 
 	return -1;
 }
@@ -614,7 +680,9 @@ int _loc_AreaWrite(char *name, unsigned int lba, unsigned short nSector, void *b
 {
 	unsigned int i;
 
-	if (target_is_emmc_boot()) {
+#if _EMMC_BOOT
+	//if (target_is_emmc_boot())
+	{
 		ioctl_diskrwpage_t rwHiddenPage;
 
 		if( _loc_strcmp(FWDN_SD_DATA_AREA_NAME,name) == 0  
@@ -637,7 +705,9 @@ int _loc_AreaWrite(char *name, unsigned int lba, unsigned short nSector, void *b
 			}
 		}
 	}
-	else {
+	//else
+#else /* _EMMC_BOOT */
+	{
 		for(i=0 ; i<NAND_Area_GetCount(0); i++) {
 #if defined(OTP_UID_INCLUDE)
 			if (_loc_strcmp(FWDN_FAT_ONLY_DATA_AREA_NAME,name) == 0)
@@ -647,6 +717,7 @@ int _loc_AreaWrite(char *name, unsigned int lba, unsigned short nSector, void *b
 				return NAND_Area_WriteSector(0, i, lba, nSector, buff);
 		}
 	}
+#endif /* _EMMC_BOOT */
 
 #if defined(TZOW_INCLUDE)
 	if (IS_FWDN_OTP_AREA(name, lba) == 1) {
@@ -669,7 +740,11 @@ int FWDN_DRV_AREA_Write( char *name
 //#define BUNCH_SECTOR_SIZE		(0x80000000>>9)
 #define BUNCH_SECTOR_SIZE		(1024*5/*KB*/*2)
 
+#if !defined(CONFIG_TCC_CODESONAR_BLOCKED)
+	unsigned char *receiveBuf = NULL;
+#else
 	unsigned char *receiveBuf;// = (unsigned char *)fwdndBuf;
+#endif
 	//unsigned char *verifyBuf  = (unsigned char *)veriBuf;
 	unsigned short nReceiveSector;
 	unsigned int nReceiveBytes;
@@ -955,8 +1030,10 @@ static int _loc_GetAreaSize(char *name)
 {
 	unsigned int i;
 
-	if (target_is_emmc_boot())
+#if _EMMC_BOOT
+	//if (target_is_emmc_boot())
 		return 0;
+#endif /* _EMMC_BOOT */
 
 	for(i=0 ; i<NAND_Area_GetCount(0); i++) {
 		if(_loc_strcmp(FWDN_NAND_AREA_NAME[i],name) == 0)
@@ -979,6 +1056,10 @@ int _loc_Physical_AreaRead( void *buff, FXN_FWDN_DRV_Response_NotifyData fxnFwdn
 
 	unsigned char *pucUsbBuffer = (unsigned char*)DUMP_ADDR;
 
+#if !defined(CONFIG_TCC_CODESONAR_BLOCKED)
+	memset(&ioctl_physical_info, 0x00, sizeof(ioctl_diskphysical_t));
+#else
+#endif
 	// Get Total NAND Physical Block Number.
 	DISK_Ioctl( DISK_DEVICE_NAND, DEV_GET_PHYSICAL_INFO, (void*) &ioctl_physical_info );
 
@@ -1017,8 +1098,10 @@ int FWDN_DRV_Dump(char *pName, unsigned int uiAddress, unsigned int uiSize,
 {
 	int res = FALSE;
 
-	if (target_is_emmc_boot())
+#if _EMMC_BOOT
+	//if (target_is_emmc_boot())
 		return res;
+#endif /* _EMMC_BOOT */
 
 	if( _loc_strcmp(pName,"boot") == 0 ) {
 		uiSize = NAND_DumpExtArea( (unsigned char *)DUMP_ADDR );

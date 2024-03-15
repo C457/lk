@@ -24,7 +24,7 @@
 #include <dev/camera/sensor_if.h>
 #include <dev/camera/lvds.h>
 #include <daudio_settings.h>
-
+#include <daudio_ver.h>
 static struct sensor_gpio gpio_info = {
 	.pwr_port = (int)NULL,
 	.pwd_port = (int)NULL,
@@ -74,10 +74,20 @@ static void lvds_set_gpio_pin(void) {
 }
 
 static struct sensor_reg lvds_des_reset[] = {
-	{0x01, 0x01},
+	{0x08, 0xB1},
+	{0x05, 0x79},
+	{0x9E, 0xDC},
+//	{0x04, 0x87},	//Test Register, Lock Enable
 	{0xFF, 0xFF}
 };
 
+static struct sensor_reg lvds_des_reset_dcs_0[] = {
+    {0x08, 0xB1},
+    {0x05, 0x39},   // DCS = 0
+    {0x9E, 0xDC},
+//  {0x04, 0x87},   //Test Register, Lock Enable
+    {0xFF, 0xFF}
+};
 #if 0
 struct sensor_reg * sensor_regs_type_and_encode[CAM_TYPE_MAX][CAM_ENC_MAX] = {
 	{
@@ -159,11 +169,16 @@ struct tcc_cif_parameters lvds_parameters_data = {
 		.early_cam_parking_line_width = 0,
 		.early_cam_parking_line_height = 0,
 		.early_cam_parking_line_format = TCC_LCDC_IMG_FMT_RGB888,
+// These parameters are for 2021.03, when 140pixels Left black screen is required to Add
+		.early_cam_bg_x = 0,
+		.early_cam_bg_y = 0,
+		.early_cam_bg_width = 0,
+		.early_cam_bg_height = 0,
 	},
 
-	.Cam_brightness = 127,
-	.Cam_contrast = 127,
-	.Cam_saturation = 127
+	.Cam_brightness = 122,
+	.Cam_contrast = 122,
+	.Cam_saturation = 122
 };
 
 static int tcc_cif_i2c_write(unsigned char* data, unsigned short reg_bytes, unsigned short data_bytes) {
@@ -184,7 +199,7 @@ static int tcc_cif_i2c_read(unsigned char cmd, unsigned char *value)
 	unsigned char send_data[1], read_data[1];
 	int ret;
 
-	dprintf(INFO,"tcc_cif_i2c_read() - start. \n");
+	//dprintf(INFO,"tcc_cif_i2c_read() - start. \n");
 
 	send_data[0] = cmd;
 	read_data[0] = 0;
@@ -195,10 +210,10 @@ static int tcc_cif_i2c_read(unsigned char cmd, unsigned char *value)
 		dprintf(INFO,"read error!!!! \n");
 		return -1;
 	}
-
+ 
 	*value = read_data[0];
 
-	dprintf(INFO,"tcc_cif_i2c_read() - end. \n");
+	//dprintf(INFO,"tcc_cif_i2c_read() - end. \n");
 }
 
 static int write_regs(const struct sensor_reg reglist[]) {
@@ -242,11 +257,12 @@ int lvds_tune(unsigned int camera_type, unsigned int camera_encode) {
 	read_ie_setting(&info_ie_read);
 
 	//Default(127) +-25, min(102), max(152)
-	if(info_ie_read.twxxxx_cam_brightness >= 102 && info_ie_read.twxxxx_cam_brightness <= 152)
+	//2018.10.04 - maximum value change (152->142)
+	if(info_ie_read.twxxxx_cam_brightness >= 77 && info_ie_read.twxxxx_cam_brightness <= 167)
 		lvds_parameters_data.Cam_brightness = info_ie_read.twxxxx_cam_brightness;
-	if(info_ie_read.twxxxx_cam_contrast >= 102 && info_ie_read.twxxxx_cam_contrast <= 152)
+	if(info_ie_read.twxxxx_cam_contrast >= 77 && info_ie_read.twxxxx_cam_contrast <= 167)
 		lvds_parameters_data.Cam_contrast = info_ie_read.twxxxx_cam_contrast;
-	if(info_ie_read.twxxxx_cam_saturation >= 102 && info_ie_read.twxxxx_cam_saturation <= 152)
+	if(info_ie_read.twxxxx_cam_saturation >= 77 && info_ie_read.twxxxx_cam_saturation <= 167)
 		lvds_parameters_data.Cam_saturation = info_ie_read.twxxxx_cam_saturation;
 
 	dprintf(INFO, "UserSetting@#---- %s() - lut_cam_brightness=%d,lut_cam_contrast=%d,lut_cam_saturation=%d\n", __func__, info_ie_read.twxxxx_cam_brightness, info_ie_read.twxxxx_cam_contrast, info_ie_read.twxxxx_cam_saturation);
@@ -256,15 +272,47 @@ int lvds_tune(unsigned int camera_type, unsigned int camera_encode) {
 
 int lvds_open(void) {
 	unsigned char val[2] = {0};
-	unsigned char addr = 0;
-	unsigned int gpio_g14 = 0;
-	int ret;
+    struct sensor_reg *next = lvds_des_reset;
+	const int RETRY_COUNT = 2;
+	int retry = 0;
+    unsigned char lcd_ver = get_daudio_lcd_ver();
+    if(gpio_get(TCC_GPB(13)) == 0){    // 0 : seperated , 1 : intergrated
+        if(lcd_ver == DAUDIOKK_LCD_OD_10_25_1920_720_INCELL_LTPS_LG){    // for seperated monitors of 10.25inches -> DCS = 0
+            next = lvds_des_reset_dcs_0;
+        }
+    } 
 	dprintf(INFO, "!@#---- %s()\n", __func__);
 
 	lvds_set_gpio_pin();
-	tcc_cif_i2c_read(CAMERA_I2C_CMD_ID , &addr);	//hklee
-	dprintf(INFO,"[LVDS] DES device ID 0x%x \n", addr);
+	tcc_cif_i2c_read(CAMERA_I2C_CMD_ID , &val[1]);	//hklee
+	dprintf(INFO,"[LVDS] DES device ID 0x%x \n", val[1]);
 
+	while (retry < RETRY_COUNT){
+		if((next->reg == 0xFF) && (next->val == 0xFF))
+			break;
+
+		val[0] = next->reg;
+		tcc_cif_i2c_read(val[0], &val[1]);
+		dprintf(INFO,"[LVDS] DES reg : 0x%02x, default val : 0x%02x\n", val[0], val[1]);
+        
+		val[1] = next->val;
+		tcc_cif_i2c_write(val, 1, 1);
+
+		val[1] = 0;
+		tcc_cif_i2c_read(val[0], &val[1]);
+		if(val[1] == next->val)
+		{
+			dprintf(INFO,"[LVDS] DES reg : 0x%02x, new val : 0x%02x\n", val[0], val[1]);
+			next++;
+		}
+		else
+		{
+			dprintf(INFO,"[LVDS] Register Init Fail. Retry Count = %d\n", retry);
+			next = lvds_des_reset;
+			retry++;
+		}
+	}
+	
 #if 0
 		val[0] = 0x07;		//config register : 0x07
 		val[1] = 0;

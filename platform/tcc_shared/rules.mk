@@ -61,6 +61,10 @@ ifeq ($(PIO_WIDE_8GB_PARTITION), true)
 DEFINES += PIO_WIDE_8GB_PARTITION
 endif
 
+ifeq ($(PIO_WIDE_8GB_PARTITION2), true)
+DEFINES += PIO_WIDE_8GB_PARTITION2
+endif
+
 endif
 
 ifeq ($(INCLUDE_CURVED_TI_SERDES), true)
@@ -171,11 +175,11 @@ endif
 
 endif
 
-ifneq ($(EMMC_BOOT),1)
+#ifeq ($(PLATFORM), tcc896x)
+#OBJS += $(LOCAL_DIR)/nand_drv_dummy.o
+#else
 include ../../../hardware/telechips/nand_v8/Makefile
-else
-OBJS += $(LOCAL_DIR)/nand_drv_dummy.o
-endif
+#endif
 
 include platform/tcc_shared/tools/Makefile
 include platform/tcc_shared/tcsb/Makefile

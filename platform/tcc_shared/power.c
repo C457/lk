@@ -54,8 +54,12 @@ void tcc_pwr_init(void)
 {
     power_src = &power_control;
 
+#if !defined(CONFIG_TCC_CODESONAR_BLOCKED)
+	power_src->pwr_init();
+#else
     if (power_src)
         power_src->pwr_init();
+#endif
 
 #ifdef RT5746_DISCR
     rt5746_init();

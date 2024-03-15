@@ -52,7 +52,8 @@ OBJS +=	\
 #include platform/$(PLATFORM)/rules.mk
 # System devices
 OBJS += \
-	platform/$(PLATFORM)/gpio.o
+	platform/$(PLATFORM)/gpio.o \
+	platform/tcc_shared/timer.o
 
 # Peripharal devices
 OBJS += \
@@ -96,6 +97,7 @@ ${OUTPUT}:
 	@mkdir -p ${OUTPUT}
 	@mkdir -p ${OUTPUT}/source
 	@mkdir -p ${OUTPUT}/platform/${PLATFORM}/vioc
+	@mkdir -p ${OUTPUT}/platform/tcc_shared
 	@mkdir -p ${OUTPUT}/dev
 
 ${OUTPUT}/TCCortexM.axf: ${ALLOBJS} ${LIBS}

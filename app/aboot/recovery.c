@@ -288,7 +288,30 @@ int recovery_init(void)
 	/*strcpy(msg.command, "");*/
     strcpy(msg.status, "OKAY");
     set_recovery_message(&msg);
-    boot_into_recovery = 1;
+
+    // if enginner is pushed 's' key then goto normal boot
+    if (skip_loading_quickboot == 0)
+       boot_into_recovery = 1;
+    else
+	printf("enginner force normal boot mode !!!\n");
+    return 0;
+  }
+
+    if (!strcmp("boot-android",msg.command)) {
+    dprintf(INFO, "boot-android misc partition clear\n");
+    strcpy(msg.command, "");
+    strcpy(msg.status, "");
+    strcpy(msg.recovery, "");
+    set_recovery_message(&msg);
+    return 0;
+  }
+  if (!strcmp("boot-panic",msg.command)) {
+    dprintf(INFO, "Enter normal boot mode(boot-panic).\n");
+    strcpy(msg.command, "");
+    strcpy(msg.status, "");
+    strcpy(msg.recovery, "");
+    set_recovery_message(&msg);
+    //skip_loading_quickboot = 1;
     return 0;
   }
 
@@ -300,6 +323,12 @@ int recovery_init(void)
 	}
 //-[TCCQB]
 //
+	//quickboot only
+	//if (!strcmp("boot-panic",msg.command)) {
+	//	printf("Enter normal boot mode(boot-panic).\n");
+	//	skip_loading_quickboot = 1;
+	//	return 0;
+	//}
 
   if (!strcmp("update-bootloader",msg.command))
   {
