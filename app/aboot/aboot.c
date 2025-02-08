@@ -2353,7 +2353,7 @@ void aboot_init(const struct app_descriptor *app)
 				mdelay(500);
 				target_control_vbus(1);
 
-				boot_uboot();
+				goto fastboot;
 			}
 		}
 
