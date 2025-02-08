@@ -124,10 +124,10 @@ endif
 
 # set the default toolchain to arm eabi and set a #define
 #TOOLCHAIN_PREFIX ?= arm-linux-androideabi-
-ifeq ($(TARGET_GCC_VERSION),4.7)
-TOOLCHAIN_PREFIX ?= ../../../prebuilts/gcc/linux-x86/arm/arm-eabi-4.6/bin/arm-eabi-
+ifneq ($(TARGET_GCC_VERSION),4.7)
+TOOLCHAIN_PREFIX ?= ../../prebuilts/gcc/linux-x86/arm/arm-eabi-4.6/bin/arm-eabi-
 else
-TOOLCHAIN_PREFIX ?= arm-eabi-
+TOOLCHAIN_PREFIX ?= ../../prebuilts/gcc/linux-x86/arm/arm-eabi-4.7/bin/arm-eabi-
 endif
 ifeq ($(TOOLCHAIN_PREFIX),arm-none-linux-gnueabi-)
 # XXX test for EABI better than this
